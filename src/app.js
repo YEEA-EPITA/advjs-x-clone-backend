@@ -8,6 +8,11 @@ require("dotenv").config();
 
 const connectMongoDB = require("./config/mongodb");
 const authRoutes = require("./routes/auth");
+const {
+  healthCheckView,
+  apiInfoView,
+  notFoundView,
+} = require("./views/systemViews");
 
 const app = express();
 
@@ -54,7 +59,12 @@ app.use("/api/auth", authRoutes);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
-  res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
+  res.status(200).json(healthCheckView());
+});
+
+// API info endpoint
+app.get("/api/info", (req, res) => {
+  res.status(200).json(apiInfoView());
 });
 
 // Error handling middleware
@@ -71,7 +81,7 @@ app.use((err, req, res, next) => {
 
 // 404 handler
 app.use("*", (req, res) => {
-  res.status(404).json({ error: "Route not found" });
+  res.status(404).json(notFoundView(req.originalUrl, req.method));
 });
 
 const PORT = process.env.PORT || 3000;

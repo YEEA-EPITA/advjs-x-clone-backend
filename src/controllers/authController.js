@@ -1,6 +1,13 @@
 const jwt = require("jsonwebtoken");
 const { validationResult } = require("express-validator");
 const User = require("../models/User");
+const {
+  authSuccessView,
+  userDataView,
+  successView,
+  errorView,
+  validationErrorView,
+} = require("../views/authViews");
 
 // In-memory token blacklist (in production, use Redis or database)
 const blacklistedTokens = new Set();
@@ -27,7 +34,7 @@ exports.register = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json(validationErrorView(errors));
     }
 
     const { username, email, password, displayName } = req.body;
@@ -38,12 +45,11 @@ exports.register = async (req, res) => {
     });
 
     if (existingUser) {
-      return res.status(400).json({
-        error:
-          existingUser.email === email
-            ? "Email already registered"
-            : "Username already taken",
-      });
+      const errorMessage =
+        existingUser.email === email
+          ? "Email already registered"
+          : "Username already taken";
+      return res.status(400).json(errorView(errorMessage, 400));
     }
 
     // Create new user
@@ -59,22 +65,13 @@ exports.register = async (req, res) => {
     // Generate token
     const token = generateToken(user._id);
 
-    // Send response
-    res.status(201).json({
-      message: "User registered successfully",
-      token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        displayName: user.displayName,
-        isVerified: user.isVerified,
-        createdAt: user.createdAt,
-      },
-    });
+    // Send response using view
+    res
+      .status(201)
+      .json(authSuccessView("User registered successfully", token, user));
   } catch (error) {
     console.error("Registration error:", error);
-    res.status(500).json({ error: "Server error during registration" });
+    res.status(500).json(errorView("Server error during registration"));
   }
 };
 
