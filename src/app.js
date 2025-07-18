@@ -33,12 +33,38 @@ initializeDatabases();
 
 // Security middleware
 app.use(helmet());
-app.use(
-  cors({
-    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
-    credentials: true,
-  })
-);
+
+// Dynamic CORS configuration
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+
+    // In development, allow any localhost port
+    if (process.env.NODE_ENV === "development") {
+      const localhostRegex = /^https?:\/\/(localhost|127\.0\.0\.1):(\d+)$/;
+      if (localhostRegex.test(origin)) {
+        return callback(null, true);
+      }
+    }
+
+    // In production, only allow specific origins
+    const allowedOrigins = process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(",")
+      : ["http://localhost:3000"];
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+};
+
+app.use(cors(corsOptions));
 
 // Rate limiting
 const limiter = rateLimit({
