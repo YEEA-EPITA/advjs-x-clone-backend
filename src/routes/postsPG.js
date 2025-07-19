@@ -1,0 +1,111 @@
+const express = require("express");
+const { body, query, param } = require("express-validator");
+const {
+  postController,
+  checkPostgresConnection,
+} = require("../controllers/postgresPostController");
+const authMiddleware = require("../middleware/auth");
+
+const router = express.Router();
+
+// Middleware to check PostgreSQL connection for all routes
+router.use(checkPostgresConnection);
+
+// Create a new post
+router.post(
+  "/",
+  authMiddleware,
+  [
+    body("content")
+      .isLength({ min: 1, max: 2000 })
+      .withMessage("Content must be between 1 and 2000 characters"),
+    body("contentType")
+      .optional()
+      .isIn(["text", "image", "video", "link"])
+      .withMessage("Invalid content type"),
+    body("mediaUrls")
+      .optional()
+      .isArray()
+      .withMessage("Media URLs must be an array"),
+    body("location")
+      .optional()
+      .isLength({ max: 100 })
+      .withMessage("Location must not exceed 100 characters"),
+  ],
+  postController.createPost
+);
+
+// Get user's personalized feed
+router.get(
+  "/feed",
+  authMiddleware,
+  [
+    query("limit")
+      .optional()
+      .isInt({ min: 1, max: 100 })
+      .withMessage("Limit must be between 1 and 100"),
+    query("offset")
+      .optional()
+      .isInt({ min: 0 })
+      .withMessage("Offset must be non-negative"),
+  ],
+  postController.getUserFeed
+);
+
+// Search posts with advanced filtering
+router.get(
+  "/search",
+  [
+    query("q")
+      .optional()
+      .isLength({ min: 1, max: 100 })
+      .withMessage("Search query must be between 1 and 100 characters"),
+    query("type")
+      .optional()
+      .isIn(["text", "image", "video", "link"])
+      .withMessage("Invalid content type filter"),
+    query("from")
+      .optional()
+      .isISO8601()
+      .withMessage("From date must be a valid ISO 8601 date"),
+    query("limit")
+      .optional()
+      .isInt({ min: 1, max: 100 })
+      .withMessage("Limit must be between 1 and 100"),
+  ],
+  postController.searchPosts
+);
+
+// Get trending hashtags
+router.get(
+  "/trending/hashtags",
+  [
+    query("limit")
+      .optional()
+      .isInt({ min: 1, max: 50 })
+      .withMessage("Limit must be between 1 and 50"),
+    query("hours")
+      .optional()
+      .isInt({ min: 1, max: 168 })
+      .withMessage("Hours must be between 1 and 168 (7 days)"),
+  ],
+  postController.getTrendingHashtags
+);
+
+// Like a post
+router.post(
+  "/:postId/like",
+  authMiddleware,
+  [param("postId").isUUID().withMessage("Post ID must be a valid UUID")],
+  postController.likePost
+);
+
+// Get detailed post analytics
+router.get(
+  "/:postId/analytics",
+  authMiddleware,
+  [param("postId").isUUID().withMessage("Post ID must be a valid UUID")],
+  postController.getPostAnalytics
+);
+
+module.exports = router;
