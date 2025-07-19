@@ -7,7 +7,9 @@ const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
 const connectMongoDB = require("./config/mongodb");
+const { connectPostgreSQL } = require("./config/postgresql");
 const authRoutes = require("./routes/auth");
+const postsRoutes = require("./routes/postsPG");
 const {
   healthCheckView,
   apiInfoView,
@@ -16,19 +18,31 @@ const {
 
 const app = express();
 
-// Database connections (only MongoDB for auth)
+// Database connections (MongoDB for auth, PostgreSQL for posts/analytics)
 const initializeDatabases = async () => {
   try {
+    // Initialize MongoDB for user authentication
     await connectMongoDB();
-    console.log("✅ Database initialized successfully");
+    console.log("✅ MongoDB initialized successfully");
+
+    // Try to initialize PostgreSQL for posts, relationships, and analytics
+    try {
+      await connectPostgreSQL();
+      console.log("✅ PostgreSQL initialized successfully");
+    } catch (pgError) {
+      console.warn(
+        "⚠️  PostgreSQL connection failed, posts endpoints may not work"
+      );
+      console.error("PostgreSQL error:", pgError.message);
+    }
+
+    console.log("✅ Database initialization completed");
   } catch (error) {
-    console.warn("⚠️  MongoDB connection failed, authentication will not work");
+    console.warn("⚠️  Database connection failed");
     console.error("Database error:", error.message);
     // Don't exit, let the server run but warn about database issues
   }
-};
-
-// Initialize databases
+}; // Initialize databases
 initializeDatabases();
 
 // Security middleware
@@ -80,8 +94,9 @@ app.use(morgan("combined"));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Routes - Only Authentication
+// Routes - Authentication (MongoDB) and Posts (PostgreSQL)
 app.use("/api/auth", authRoutes);
+app.use("/api/posts", postsRoutes);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
