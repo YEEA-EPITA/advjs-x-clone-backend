@@ -10,6 +10,7 @@ const connectMongoDB = require("./config/mongodb");
 const { connectPostgreSQL } = require("./config/postgresql");
 const authRoutes = require("./routes/auth");
 const postsRoutes = require("./routes/postsPG");
+const usersRoutes = require("./routes/users");
 const {
   healthCheckView,
   apiInfoView,
@@ -94,9 +95,10 @@ app.use(morgan("combined"));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Routes - Authentication (MongoDB) and Posts (PostgreSQL)
+// Routes - Authentication (MongoDB), Posts (PostgreSQL), and Users (MongoDB)
 app.use("/api/auth", authRoutes);
 app.use("/api/posts", postsRoutes);
+app.use("/api/users", usersRoutes);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
@@ -125,7 +127,7 @@ app.use("*", (req, res) => {
   res.status(404).json(notFoundView(req.originalUrl, req.method));
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
