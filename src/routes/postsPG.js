@@ -100,6 +100,20 @@ router.post(
   postController.likePost
 );
 
+// Retweet a post
+router.post(
+  "/:postId/retweet",
+  authMiddleware,
+  [
+    param("postId").isUUID().withMessage("Post ID must be a valid UUID"),
+    body("comment")
+      .optional()
+      .isLength({ max: 280 })
+      .withMessage("Comment must not exceed 280 characters"),
+  ],
+  postController.retweetPost
+);
+
 // Get detailed post analytics
 router.get(
   "/:postId/analytics",
