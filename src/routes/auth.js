@@ -2,6 +2,7 @@ const express = require("express");
 const { body } = require("express-validator");
 const authController = require("../controllers/authController");
 const authMiddleware = require("../middleware/auth");
+const userController = require("../controllers/userController");
 
 const router = express.Router();
 
@@ -65,6 +66,23 @@ router.put(
       .withMessage("New password must be at least 6 characters long"),
   ],
   authController.updatePassword
+);
+
+// Update profile
+router.put(
+  "/profile",
+  authMiddleware,
+  [
+    body("displayName")
+      .optional()
+      .isLength({ min: 1, max: 50 })
+      .withMessage("Display name must be between 1 and 50 characters"),
+    body("bio")
+      .optional()
+      .isLength({ max: 280 })
+      .withMessage("Bio must not exceed 280 characters"),
+  ],
+  userController.updateProfile
 );
 
 module.exports = router;

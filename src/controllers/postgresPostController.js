@@ -303,6 +303,91 @@ const postController = {
       });
     }
   },
+
+  // Retweet a post
+  retweetPost: async (req, res) => {
+    const transaction = await sequelize.transaction();
+
+    try {
+      const { postId } = req.params;
+      const { comment = "" } = req.body;
+      const userId = req.user._id.toString();
+      const username = req.user.username;
+
+      // Check if post exists
+      const post = await Post.findByPk(postId);
+      if (!post) {
+        await transaction.rollback();
+        return res.status(404).json({
+          success: false,
+          error: "Post not found",
+        });
+      }
+
+      // Check if user already retweeted this post
+      const existingRetweet = await UserRetweet.findOne({
+        where: {
+          user_id: userId,
+          post_id: postId,
+        },
+        transaction,
+      });
+
+      if (existingRetweet) {
+        // Remove retweet (unretweet)
+        await existingRetweet.destroy({ transaction });
+
+        // Decrement retweet count
+        await post.update(
+          { retweet_count: Math.max(0, post.retweet_count - 1) },
+          { transaction }
+        );
+
+        await transaction.commit();
+
+        return res.json({
+          success: true,
+          message: "Post unretweeted successfully",
+          retweetCount: Math.max(0, post.retweet_count - 1),
+          isRetweeted: false,
+        });
+      } else {
+        // Create new retweet
+        await UserRetweet.create(
+          {
+            user_id: userId,
+            post_id: postId,
+            username,
+            comment,
+          },
+          { transaction }
+        );
+
+        // Increment retweet count
+        await post.update(
+          { retweet_count: post.retweet_count + 1 },
+          { transaction }
+        );
+
+        await transaction.commit();
+
+        return res.json({
+          success: true,
+          message: "Post retweeted successfully",
+          retweetCount: post.retweet_count + 1,
+          isRetweeted: true,
+        });
+      }
+    } catch (error) {
+      await transaction.rollback();
+      console.error("Retweet post error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to retweet post",
+        message: error.message,
+      });
+    }
+  },
 };
 
 module.exports = {
