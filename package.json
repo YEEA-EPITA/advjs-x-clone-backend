@@ -2,12 +2,12 @@
   "name": "twitter-clone-backend",
   "version": "1.0.0",
   "description": "Backend API for Twitter/X clone with real-time features",
-  "main": "src/app.js",
+  "main": "app.js",
   "scripts": {
-    "start": "node src/app.js",
-    "start:simple": "node src/server.js",
-    "dev": "nodemon src/app.js",
-    "dev:simple": "nodemon src/server.js",
+    "start": "node app.js",
+    "start:simple": "node server.js",
+    "dev": "nodemon app.js",
+    "dev:simple": "nodemon app.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src/",
@@ -41,7 +41,8 @@
     "mongoose": "^8.16.3",
     "morgan": "^1.10.0",
     "pg": "^8.16.3",
-    "sequelize": "^6.37.7"
+    "sequelize": "^6.37.7",
+    "yup": "^1.6.1"
   },
   "devDependencies": {
     "jest": "^30.0.4",

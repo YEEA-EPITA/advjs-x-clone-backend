@@ -8,9 +8,7 @@ require("dotenv").config();
 
 const connectMongoDB = require("./config/mongodb");
 const { connectPostgreSQL } = require("./config/postgresql");
-const authRoutes = require("./routes/auth");
-const postsRoutes = require("./routes/postsPG");
-const usersRoutes = require("./routes/users");
+const { authRoutes, postsRoutes, usersRoutes } = require("./routes");
 const {
   healthCheckView,
   apiInfoView,
@@ -130,8 +128,7 @@ app.use("*", (req, res) => {
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`� Authentication API ready`);
+  console.log(`Server running on port ${PORT}`);
 });
 
 module.exports = app;

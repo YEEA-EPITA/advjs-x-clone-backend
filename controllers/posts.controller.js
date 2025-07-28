@@ -4,26 +4,9 @@ const {
   UserRetweet,
   UserFollow,
 } = require("../models/PostgreSQLModels");
-const { sequelize } = require("../config/postgresql");
-
-// Middleware to check if PostgreSQL is available
-const checkPostgresConnection = async (req, res, next) => {
-  try {
-    await sequelize.authenticate();
-    next();
-  } catch (error) {
-    return res.status(503).json({
-      success: false,
-      error: "Posts service unavailable",
-      message:
-        "PostgreSQL database is not connected. Please start the database and try again.",
-      hint: "Run 'docker-compose up -d postgresql' to start PostgreSQL",
-    });
-  }
-};
 
 // Post controller using PostgreSQL for complex queries and analytics
-const postController = {
+const postsController = {
   // Create a new post
   createPost: async (req, res) => {
     const transaction = await sequelize.transaction();
@@ -390,7 +373,4 @@ const postController = {
   },
 };
 
-module.exports = {
-  postController,
-  checkPostgresConnection,
-};
+module.exports = postsController;

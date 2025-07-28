@@ -1,13 +1,7 @@
 const jwt = require("jsonwebtoken");
 const { validationResult } = require("express-validator");
-const User = require("../models/User");
-const {
-  authSuccessView,
-  userDataView,
-  successView,
-  errorView,
-  validationErrorView,
-} = require("../views/authViews");
+const { UserModels } = require("../models");
+const { ErrorFactory, ResponseFactory } = require("../factories");
 
 // In-memory token blacklist (in production, use Redis or database)
 const blacklistedTokens = new Set();
@@ -32,15 +26,10 @@ const isTokenBlacklisted = (token) => {
 // Register user
 exports.register = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json(validationErrorView(errors));
-    }
-
     const { username, email, password, displayName } = req.body;
 
     // Check if user already exists
-    const existingUser = await User.findOne({
+    const existingUser = await UserModels.findOne({
       $or: [{ email }, { username }],
     });
 
@@ -49,11 +38,14 @@ exports.register = async (req, res) => {
         existingUser.email === email
           ? "Email already registered"
           : "Username already taken";
-      return res.status(400).json(errorView(errorMessage, 400));
+      return ErrorFactory.conflict({
+        res,
+        message: errorMessage,
+      });
     }
 
     // Create new user
-    const user = new User({
+    const user = new UserModels({
       username,
       email,
       password,
@@ -66,36 +58,34 @@ exports.register = async (req, res) => {
     const token = generateToken(user._id);
 
     // Send response using view
-    res
-      .status(201)
-      .json(authSuccessView("User registered successfully", token, user));
+    return ResponseFactory.authSuccess({
+      res,
+      token,
+      user,
+      message: "User registered successfully",
+    });
   } catch (error) {
-    console.error("Registration error:", error);
-    res.status(500).json(errorView("Server error during registration"));
+    return ErrorFactory.internalServerError({
+      res,
+      message: "Server error during registration",
+    });
   }
 };
 
 // Login user
 exports.login = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
     const { email, password } = req.body;
 
     // Find user
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ error: "Invalid credentials" });
-    }
+    const user = await UserModels.findOne({ email });
+    if (!user)
+      return ErrorFactory.unauthorized({ res, message: "Invalid credentials" });
 
     // Check password
     const isMatch = await user.comparePassword(password);
-    if (!isMatch) {
-      return res.status(400).json({ error: "Invalid credentials" });
-    }
+    if (!isMatch)
+      return ErrorFactory.unauthorized({ res, message: "Invalid credentials" });
 
     // Update last active
     user.lastActive = new Date();
@@ -105,8 +95,8 @@ exports.login = async (req, res) => {
     const token = generateToken(user._id);
 
     // Send response
-    res.json({
-      message: "Login successful",
+    return ResponseFactory.authSuccess({
+      res,
       token,
       user: {
         id: user._id,
@@ -116,10 +106,13 @@ exports.login = async (req, res) => {
         isVerified: user.isVerified,
         createdAt: user.createdAt,
       },
+      message: "Login successful",
     });
   } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({ error: "Server error during login" });
+    return ErrorFactory.internalServerError({
+      res,
+      message: "Server error during login",
+    });
   }
 };
 
@@ -129,35 +122,37 @@ exports.logout = async (req, res) => {
     // Extract token from Authorization header
     const token = req.header("Authorization")?.replace("Bearer ", "");
 
-    if (!token) {
-      return res.status(401).json({ error: "No token provided" });
-    }
-
     // Add token to blacklist
     blacklistToken(token);
 
-    res.json({
+    return ResponseFactory.accepted({
+      res,
       message: "Logged out successfully",
-      note: "Token has been invalidated",
     });
   } catch (error) {
-    console.error("Logout error:", error);
-    res.status(500).json({ error: "Server error during logout" });
+    return ErrorFactory.internalServerError({
+      res,
+      message: "Server error during logout",
+    });
   }
 };
 
 // Get current user
 exports.getCurrentUser = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select("-password");
+    const user = await UserModels.findById(req.user._id).select("-password");
 
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return ErrorFactory.notFound({
+        res,
+        message: "User not found",
+      });
     }
 
-    res.json({
+    return ResponseFactory.success({
+      res,
       message: "User retrieved successfully",
-      user: {
+      data: {
         id: user._id,
         username: user.username,
         email: user.email,
@@ -174,8 +169,10 @@ exports.getCurrentUser = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get current user error:", error);
-    res.status(500).json({ error: "Server error retrieving user" });
+    return ErrorFactory.internalServerError({
+      res,
+      message: "Failed to retrieve user",
+    });
   }
 };
 
@@ -184,16 +181,20 @@ exports.refreshToken = async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "No token provided" });
+      return ErrorFactory.unauthorized({
+        res,
+        message: "No token provided",
+      });
     }
 
     const token = authHeader.substring(7);
 
     // Check if token is blacklisted
     if (isTokenBlacklisted(token)) {
-      return res
-        .status(401)
-        .json({ error: "Token has been revoked. Please login again." });
+      return ErrorFactory.unauthorized({
+        res,
+        message: "Token has been revoked. Please login again.",
+      });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -204,19 +205,19 @@ exports.refreshToken = async (req, res) => {
     // Generate new token
     const newToken = generateToken(decoded.userId);
 
-    res.json({
+    return ResponseFactory.success({
+      res,
       message: "Token refreshed successfully",
-      token: newToken,
-      note: "Old token has been invalidated",
+      data: {
+        token: newToken,
+        note: "Old token has been invalidated",
+      },
     });
   } catch (error) {
-    console.error("Refresh token error:", error);
-    if (error.name === "TokenExpiredError") {
-      return res
-        .status(401)
-        .json({ error: "Token expired. Please login again." });
-    }
-    res.status(401).json({ error: "Invalid or expired token" });
+    return ErrorFactory.unauthorized({
+      res,
+      message: "Invalid or expired token",
+    });
   }
 };
 
@@ -225,30 +226,55 @@ exports.updatePassword = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return ErrorFactory.badRequest({
+        res,
+        message: "Validation failed",
+        data: { errors: errors.array() },
+      });
     }
+  } catch (error) {
+    return ErrorFactory.internalServerError({
+      res,
+      message: "Server error during password update",
+    });
+  }
+};
 
+// Update password
+exports.updatePassword = async (req, res) => {
+  try {
     const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.user._id);
+    const user = await UserModels.findById(req.user._id);
 
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return ErrorFactory.notFound({
+        res,
+        message: "User not found",
+      });
     }
 
     // Check current password
     const isMatch = await user.comparePassword(currentPassword);
     if (!isMatch) {
-      return res.status(400).json({ error: "Current password is incorrect" });
+      return ErrorFactory.badRequest({
+        res,
+        message: "Current password is incorrect",
+      });
     }
 
     // Update password
     user.password = newPassword;
     await user.save();
 
-    res.json({ message: "Password updated successfully" });
+    return ResponseFactory.success({
+      res,
+      message: "Password updated successfully",
+    });
   } catch (error) {
-    console.error("Update password error:", error);
-    res.status(500).json({ error: "Server error updating password" });
+    return ErrorFactory.internalServerError({
+      res,
+      message: "Server error updating password",
+    });
   }
 };
 

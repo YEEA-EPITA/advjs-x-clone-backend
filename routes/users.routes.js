@@ -1,8 +1,8 @@
 const express = require("express");
 const { body, param, query } = require("express-validator");
 const router = express.Router();
-const authMiddleware = require("../middleware/auth");
-const userController = require("../controllers/userController");
+const { authMiddleware } = require("../middlewares");
+const { usersController } = require("../controllers");
 
 // Update user profile
 router.put(
@@ -26,14 +26,14 @@ router.put(
       .isURL()
       .withMessage("Website must be a valid URL"),
   ],
-  userController.updateProfile
+  usersController.updateProfile
 );
 
 // Get user public profile
 router.get(
   "/:userId/profile",
   [param("userId").isMongoId().withMessage("Invalid user ID")],
-  userController.getUserProfile
+  usersController.getUserProfile
 );
 
 // Follow a user
@@ -41,7 +41,7 @@ router.post(
   "/:userId/follow",
   authMiddleware,
   [param("userId").isMongoId().withMessage("Invalid user ID")],
-  userController.followUser
+  usersController.followUser
 );
 
 // Unfollow a user
@@ -49,7 +49,7 @@ router.delete(
   "/:userId/follow",
   authMiddleware,
   [param("userId").isMongoId().withMessage("Invalid user ID")],
-  userController.unfollowUser
+  usersController.unfollowUser
 );
 
 // Get user's followers
@@ -66,7 +66,7 @@ router.get(
       .isInt({ min: 1, max: 100 })
       .withMessage("Limit must be between 1 and 100"),
   ],
-  userController.getFollowers
+  usersController.getFollowers
 );
 
 // Get user's following
@@ -83,7 +83,7 @@ router.get(
       .isInt({ min: 1, max: 100 })
       .withMessage("Limit must be between 1 and 100"),
   ],
-  userController.getFollowing
+  usersController.getFollowing
 );
 
 module.exports = router;

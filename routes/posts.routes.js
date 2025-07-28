@@ -1,15 +1,9 @@
 const express = require("express");
 const { body, query, param } = require("express-validator");
-const {
-  postController,
-  checkPostgresConnection,
-} = require("../controllers/postgresPostController");
-const authMiddleware = require("../middleware/auth");
+const { postsController } = require("../controllers");
+const { authMiddleware } = require("../middlewares");
 
 const router = express.Router();
-
-// Middleware to check PostgreSQL connection for all routes
-router.use(checkPostgresConnection);
 
 // Create a new post
 router.post(
@@ -32,7 +26,7 @@ router.post(
       .isLength({ max: 100 })
       .withMessage("Location must not exceed 100 characters"),
   ],
-  postController.createPost
+  postsController.createPost
 );
 
 // Get user's personalized feed
@@ -49,7 +43,7 @@ router.get(
       .isInt({ min: 0 })
       .withMessage("Offset must be non-negative"),
   ],
-  postController.getUserFeed
+  postsController.getUserFeed
 );
 
 // Search posts with advanced filtering
@@ -73,7 +67,7 @@ router.get(
       .isInt({ min: 1, max: 100 })
       .withMessage("Limit must be between 1 and 100"),
   ],
-  postController.searchPosts
+  postsController.searchPosts
 );
 
 // Get trending hashtags
@@ -89,7 +83,7 @@ router.get(
       .isInt({ min: 1, max: 168 })
       .withMessage("Hours must be between 1 and 168 (7 days)"),
   ],
-  postController.getTrendingHashtags
+  postsController.getTrendingHashtags
 );
 
 // Like a post
@@ -97,7 +91,7 @@ router.post(
   "/:postId/like",
   authMiddleware,
   [param("postId").isUUID().withMessage("Post ID must be a valid UUID")],
-  postController.likePost
+  postsController.likePost
 );
 
 // Retweet a post
@@ -111,7 +105,7 @@ router.post(
       .isLength({ max: 280 })
       .withMessage("Comment must not exceed 280 characters"),
   ],
-  postController.retweetPost
+  postsController.retweetPost
 );
 
 // Get detailed post analytics
@@ -119,7 +113,7 @@ router.get(
   "/:postId/analytics",
   authMiddleware,
   [param("postId").isUUID().withMessage("Post ID must be a valid UUID")],
-  postController.getPostAnalytics
+  postsController.getPostAnalytics
 );
 
 module.exports = router;
