@@ -8,13 +8,17 @@
 const healthCheckView = () => {
   return {
     status: "OK",
-    message: "Twitter Clone Auth API is running",
+    message: "Twitter Clone Full-Stack API is running",
     timestamp: new Date().toISOString(),
     version: "1.0.0",
     environment: process.env.NODE_ENV || "development",
     services: {
-      database: "MongoDB",
-      authentication: "JWT",
+      databases: {
+        mongodb: "User Authentication & Profiles",
+        postgresql: "Posts, Analytics & Relationships",
+      },
+      authentication: "JWT with token blacklisting",
+      features: "Dual-database architecture",
     },
   };
 };
@@ -22,9 +26,17 @@ const healthCheckView = () => {
 // API info response
 const apiInfoView = () => {
   return {
-    name: "Twitter Clone Authentication API",
+    name: "Twitter Clone Full-Stack API",
     version: "1.0.0",
-    description: "Authentication microservice for Twitter/X clone",
+    description:
+      "Complete social media backend with dual-database architecture",
+    architecture: {
+      databases: {
+        mongodb: "User authentication, profiles, and flexible data",
+        postgresql: "Posts, relationships, analytics, and complex queries",
+      },
+      pattern: "MVC (Model-View-Controller)",
+    },
     endpoints: {
       authentication: [
         "POST /api/auth/register",
@@ -33,9 +45,37 @@ const apiInfoView = () => {
         "POST /api/auth/refresh",
         "GET /api/auth/me",
         "PUT /api/auth/password",
+        "PUT /api/auth/profile",
+        "GET /api/auth/users",
+      ],
+      posts: [
+        "POST /api/posts/create",
+        "GET /api/posts/feed/:userId",
+        "POST /api/posts/like/:postId",
+        "POST /api/posts/retweet/:postId",
+        "GET /api/posts/hashtags/trending",
+        "GET /api/posts/search",
+      ],
+      users: [
+        "GET /api/users/:userId/profile",
+        "POST /api/users/:userId/follow",
+        "DELETE /api/users/:userId/follow",
+        "GET /api/users/:userId/followers",
+        "GET /api/users/:userId/following",
       ],
       system: ["GET /health", "GET /api/info"],
     },
+    features: [
+      "JWT Authentication with token blacklisting",
+      "User profile management and social features",
+      "Follow/unfollow system with relationship tracking",
+      "Complex SQL queries and joins",
+      "Real-time trending hashtags",
+      "Advanced search and filtering",
+      "User engagement analytics",
+      "Dual-database optimization",
+      "Public and private profile endpoints",
+    ],
     documentation: {
       postman: "Available in repository",
       readme: "See README.md for detailed documentation",
@@ -62,6 +102,19 @@ const notFoundView = (path, method) => {
       "POST /api/auth/refresh",
       "GET /api/auth/me",
       "PUT /api/auth/password",
+      "PUT /api/auth/profile",
+      "GET /api/auth/users",
+      "POST /api/posts/create",
+      "GET /api/posts/feed/:userId",
+      "POST /api/posts/like/:postId",
+      "POST /api/posts/retweet/:postId",
+      "GET /api/posts/hashtags/trending",
+      "GET /api/posts/search",
+      "GET /api/users/:userId/profile",
+      "POST /api/users/:userId/follow",
+      "DELETE /api/users/:userId/follow",
+      "GET /api/users/:userId/followers",
+      "GET /api/users/:userId/following",
     ],
     timestamp: new Date().toISOString(),
   };
