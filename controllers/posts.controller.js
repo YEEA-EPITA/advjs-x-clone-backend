@@ -9,6 +9,63 @@ const { sequelize } = require("../config/postgresql");
 
 // Post controller using PostgreSQL for complex queries and analytics
 const postsController = {
+  // Add a comment to a post
+  addComment: async (req, res) => {
+    const Comment = require("../models/Comment");
+    const { postId } = req.params;
+    const { content } = req.body;
+    if (!content || content.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        error: "Comment content is required",
+      });
+    }
+    try {
+      const comment = await Comment.create({
+        post_id: postId,
+        user_id: req.user._id.toString(),
+        username: req.user.username,
+        content: content.trim(),
+      });
+      // Optionally increment comment_count in posts table
+      await Post.increment("comment_count", { where: { id: postId } });
+      res.status(201).json({
+        success: true,
+        message: "Comment added successfully",
+        comment,
+      });
+    } catch (error) {
+      console.error("Add comment error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to add comment",
+        message: error.message,
+      });
+    }
+  },
+
+  // Get comments for a post
+  getComments: async (req, res) => {
+    const Comment = require("../models/Comment");
+    const { postId } = req.params;
+    try {
+      const comments = await Comment.findAll({
+        where: { post_id: postId },
+        order: [["created_at", "DESC"]],
+      });
+      res.json({
+        success: true,
+        comments,
+      });
+    } catch (error) {
+      console.error("Get comments error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to get comments",
+        message: error.message,
+      });
+    }
+  },
   // Create a new post
   createPost: async (req, res) => {
     const transaction = await sequelize.transaction();
