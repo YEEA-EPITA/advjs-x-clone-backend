@@ -1,9 +1,11 @@
 const Post = require("../models/PostgreSQLPost");
+const { uploadToS3 } = require("../utils/s3");
 const {
   UserLike,
   UserRetweet,
   UserFollow,
 } = require("../models/PostgreSQLModels");
+const { sequelize } = require("../config/postgresql");
 
 // Post controller using PostgreSQL for complex queries and analytics
 const postsController = {
@@ -12,25 +14,43 @@ const postsController = {
     const transaction = await sequelize.transaction();
 
     try {
-      const {
-        content,
-        contentType = "text",
-        mediaUrls = [],
-        location,
-      } = req.body;
+      const file = req.file;
+      console.log("File received:", file);
+      const { content, location } = req.body;
 
-      // Extract hashtags and mentions from content
       const hashtags =
-        content.match(/#\w+/g)?.map((tag) => tag.substring(1)) || [];
+        content?.match(/#\w+/g)?.map((tag) => tag.substring(1)) || [];
       const mentions =
-        content.match(/@\w+/g)?.map((mention) => mention.substring(1)) || [];
+        content?.match(/@\w+/g)?.map((mention) => mention.substring(1)) || [];
+
+      const mediaUrls = [];
+
+      if (file) {
+        console.log("➡️ Uploading file:", file.originalname);
+        const url = await uploadToS3(
+          file.buffer,
+          file.originalname,
+          file.mimetype
+        );
+        console.log("📎 URL returned:", url);
+        mediaUrls.push(url);
+      }
+
+      console.log("Media URLs:", mediaUrls);
+
+      if ((!content || content.trim() === "") && mediaUrls.length === 0) {
+        await transaction.rollback();
+        return res.status(400).json({
+          success: false,
+          error: "Post content or media is required",
+        });
+      }
 
       const post = await Post.create(
         {
           user_id: req.user._id.toString(),
           username: req.user.username,
-          content,
-          content_type: contentType,
+          content: content?.trim(),
           media_urls: mediaUrls,
           hashtags,
           mentions,
@@ -49,6 +69,8 @@ const postsController = {
           content: post.content,
           hashtags: post.hashtags,
           mentions: post.mentions,
+          mediaUrls: post.media_urls,
+          location: post.location,
           createdAt: post.created_at,
         },
       });
