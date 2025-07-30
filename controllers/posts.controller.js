@@ -1,10 +1,6 @@
 const Post = require("../models/PostgreSQLPost");
 const { uploadToS3 } = require("../utils/s3");
-const {
-  UserLike,
-  UserRetweet,
-  UserFollow,
-} = require("../models/PostgreSQLModels");
+const { UserLike, UserRetweet, Poll, PollOption } = require("../models");
 const { sequelize } = require("../config/postgresql");
 
 // Post controller using PostgreSQL for complex queries and analytics
@@ -72,8 +68,21 @@ const postsController = {
 
     try {
       const file = req.file;
-      console.log("File received:", file);
+      const jwtUser = req.user;
       const { content, location } = req.body;
+      let poll = null;
+
+      if (req.body.poll) {
+        try {
+          poll = JSON.parse(req.body.poll);
+        } catch (err) {
+          await transaction.rollback();
+          return res.status(400).json({
+            success: false,
+            error: "Poll must be a valid JSON object",
+          });
+        }
+      }
 
       const hashtags =
         content?.match(/#\w+/g)?.map((tag) => tag.substring(1)) || [];
@@ -83,17 +92,13 @@ const postsController = {
       const mediaUrls = [];
 
       if (file) {
-        console.log("➡️ Uploading file:", file.originalname);
         const url = await uploadToS3(
           file.buffer,
           file.originalname,
           file.mimetype
         );
-        console.log("📎 URL returned:", url);
         mediaUrls.push(url);
       }
-
-      console.log("Media URLs:", mediaUrls);
 
       if ((!content || content.trim() === "") && mediaUrls.length === 0) {
         await transaction.rollback();
@@ -105,8 +110,8 @@ const postsController = {
 
       const post = await Post.create(
         {
-          user_id: req.user._id.toString(),
-          username: req.user.username,
+          user_id: jwtUser._id.toString(),
+          username: jwtUser.username,
           content: content?.trim(),
           media_urls: mediaUrls,
           hashtags,
@@ -116,7 +121,47 @@ const postsController = {
         { transaction }
       );
 
+      let createdPoll = null;
+      if (
+        poll &&
+        poll.question &&
+        Array.isArray(poll.options) &&
+        poll.options.length >= 2
+      ) {
+        createdPoll = await Poll.create(
+          {
+            post_id: post.id,
+            user_id: jwtUser._id.toString(),
+            question: poll.question,
+            expires_at: poll.expires_at || null,
+          },
+          { transaction }
+        );
+
+        const pollOptions = poll.options.map((text) => ({
+          poll_id: createdPoll.id,
+          option_text: text,
+        }));
+
+        await PollOption.bulkCreate(pollOptions, { transaction });
+      }
+
       await transaction.commit();
+
+      let pollData = null;
+      if (createdPoll) {
+        const pollOptions = await PollOption.findAll({
+          where: { poll_id: createdPoll.id },
+          attributes: ["id", "option_text"],
+        });
+
+        pollData = {
+          id: createdPoll.id,
+          question: createdPoll.question,
+          expires_at: createdPoll.expires_at,
+          options: pollOptions,
+        };
+      }
 
       res.status(201).json({
         success: true,
@@ -129,11 +174,11 @@ const postsController = {
           mediaUrls: post.media_urls,
           location: post.location,
           createdAt: post.created_at,
+          poll: pollData,
         },
       });
     } catch (error) {
       await transaction.rollback();
-      console.error("Create post error:", error);
       res.status(500).json({
         success: false,
         error: "Failed to create post",
