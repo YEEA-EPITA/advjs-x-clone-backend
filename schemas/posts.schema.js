@@ -1,15 +1,33 @@
 const yup = require("yup");
 
-// Create Post
 const createPostSchema = yup.object({
   content: yup
     .string()
     .min(1, "Content must be at least 1 character")
     .max(2000, "Content must not exceed 2000 characters")
     .required("Content is required"),
+
   location: yup
     .string()
     .max(100, "Location must not exceed 100 characters")
+    .required("Location is required"),
+
+  poll: yup
+    .string() // Accept raw JSON string from form-data
+    .test("is-valid-json", "Poll must be a valid JSON object", (value) => {
+      if (!value) return true; // optional
+      try {
+        const parsed = JSON.parse(value);
+        return (
+          typeof parsed === "object" &&
+          typeof parsed.question === "string" &&
+          Array.isArray(parsed.options) &&
+          parsed.options.length >= 2
+        );
+      } catch (err) {
+        return false;
+      }
+    })
     .optional(),
 });
 
