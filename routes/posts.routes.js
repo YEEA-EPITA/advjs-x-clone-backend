@@ -1,4 +1,5 @@
 const express = require("express");
+const { body } = require("express-validator");
 const { postsController } = require("../controllers");
 const {
   authMiddleware,
@@ -59,5 +60,20 @@ router.get(
   validateSchemaMiddleware({ params: postsSchema.postAnalyticsParamsSchema }),
   postsController.getPostAnalytics
 );
+
+// Add a comment to a post
+router.post(
+  "/:postId/comments",
+  authMiddleware,
+  [
+    body("content")
+      .isLength({ min: 1, max: 1000 })
+      .withMessage("Comment must be between 1 and 1000 characters"),
+  ],
+  postsController.addComment
+);
+
+// Get comments for a post
+router.get("/:postId/comments", postsController.getComments);
 
 module.exports = router;
