@@ -5,6 +5,38 @@ const { sequelize } = require("../config/postgresql");
 
 // Post controller using PostgreSQL for complex queries and analytics
 const postsController = {
+  // Get all public posts as live feeds with cursor-based pagination
+  getLiveFeeds: async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+      const cursor = req.query.cursor || null;
+
+      // Fetch live feeds from model
+      const { feeds, nextCursor, hasMore } = await Post.findLiveFeeds(
+        limit,
+        cursor
+      );
+
+      res.json({
+        success: true,
+        message: "Live feeds retrieved successfully",
+        feeds,
+        pagination: {
+          limit,
+          nextCursor,
+          hasMore,
+        },
+      });
+    } catch (error) {
+      console.error("Get live feeds error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to retrieve live feeds",
+        message: error.message,
+      });
+    }
+  },
+  // ...rest of postsController methods...
   // Add a comment to a post
   addComment: async (req, res) => {
     const Comment = require("../models/Comment");
@@ -40,6 +72,35 @@ const postsController = {
     }
   },
 
+  // Get poll for a post
+  getPollByPost: async (req, res) => {
+    const { postId } = req.params;
+    try {
+      // Find poll by postId
+      const poll = await Poll.findOne({ where: { post_id: postId } });
+      if (!poll) {
+        return res
+          .status(404)
+          .json({ success: false, error: "No poll found for this post" });
+      }
+      // Find poll options
+      const options = await PollOption.findAll({ where: { poll_id: poll.id } });
+      res.json({
+        success: true,
+        poll,
+        options,
+      });
+    } catch (error) {
+      console.error("Get poll by post error:", error);
+      res
+        .status(500)
+        .json({
+          success: false,
+          error: "Failed to get poll",
+          message: error.message,
+        });
+    }
+  },
   // Get comments for a post
   getComments: async (req, res) => {
     const Comment = require("../models/Comment");
@@ -191,21 +252,9 @@ const postsController = {
   getUserFeed: async (req, res) => {
     try {
       const userId = req.user._id.toString();
-      const limit = parseInt(req.query.limit) || 20;
-      const offset = parseInt(req.query.offset) || 0;
-
-      const feedPosts = await Post.findUserFeed(userId, limit, offset);
-
-      res.json({
-        success: true,
-        message: "Feed retrieved successfully",
-        posts: feedPosts,
-        pagination: {
-          limit,
-          offset,
-          hasMore: feedPosts.length === limit,
-        },
-      });
+      // Fetch all posts for the user
+      const feedPosts = await Post.findUserFeed(userId);
+      res.json(feedPosts);
     } catch (error) {
       console.error("Get user feed error:", error);
       res.status(500).json({

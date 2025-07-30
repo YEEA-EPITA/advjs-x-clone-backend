@@ -148,11 +148,10 @@ Post.findUserFeed = async (userId, limit = 20, offset = 0) => {
     LEFT JOIN user_retweets ur ON p.id = ur.post_id AND ur.user_id = :userId
     WHERE p.is_public = true
     ORDER BY p.created_at DESC
-    LIMIT :limit OFFSET :offset
   `;
 
-  const [results] = await sequelize.query(query, {
-    replacements: { userId, limit, offset },
+  const results = await sequelize.query(query, {
+    replacements: { userId },
     type: sequelize.QueryTypes.SELECT,
   });
 
@@ -200,6 +199,51 @@ Post.searchPosts = async (searchTerm, filters = {}) => {
   });
 
   return results;
+};
+
+// Cursor-based pagination for live feeds
+Post.findLiveFeeds = async (limit = 20, cursor = null) => {
+  // Cursor is expected to be a string: 'created_at|id'
+  let whereClause = "p.is_public = true";
+  let replacements = {};
+
+  if (cursor) {
+    // Split cursor into created_at and id
+    const [createdAt, id] = cursor.split("|");
+    whereClause +=
+      " AND (p.created_at < :createdAt OR (p.created_at = :createdAt AND p.id < :id))";
+    replacements.createdAt = createdAt;
+    replacements.id = id;
+  }
+
+  const query = `
+    SELECT p.*
+    FROM posts p
+    WHERE ${whereClause}
+    ORDER BY p.created_at DESC, p.id DESC
+    LIMIT :limit
+  `;
+  replacements.limit = limit;
+
+  const results = await sequelize.query(query, {
+    replacements,
+    type: sequelize.QueryTypes.SELECT,
+  });
+
+  // Prepare next cursor
+  let nextCursor = null;
+  let hasMore = false;
+  if (results.length === limit) {
+    const last = results[results.length - 1];
+    nextCursor = `${last.created_at.toISOString()}|${last.id}`;
+    hasMore = true;
+  }
+
+  return {
+    feeds: results,
+    nextCursor,
+    hasMore,
+  };
 };
 
 module.exports = Post;
