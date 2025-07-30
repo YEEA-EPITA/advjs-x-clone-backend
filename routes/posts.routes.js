@@ -19,6 +19,12 @@ router.post(
 );
 
 router.get(
+  "/live-feeds",
+  // No auth required, public endpoint
+  postsController.getLiveFeeds
+);
+
+router.get(
   "/feed",
   authMiddleware,
   validateSchemaMiddleware({ query: postsSchema.userFeedQuerySchema }),
@@ -72,6 +78,9 @@ router.post(
   ],
   postsController.addComment
 );
+
+// Get polls for a post
+router.get("/:postId/polls", postsController.getPollByPost);
 
 // Get comments for a post
 router.get("/:postId/comments", postsController.getComments);
