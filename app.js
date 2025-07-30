@@ -8,7 +8,12 @@ require("dotenv").config();
 
 const connectMongoDB = require("./config/mongodb");
 const { connectPostgreSQL } = require("./config/postgresql");
-const { authRoutes, postsRoutes, usersRoutes } = require("./routes");
+const {
+  authRoutes,
+  postsRoutes,
+  usersRoutes,
+  pollRoutes,
+} = require("./routes");
 const {
   healthCheckView,
   apiInfoView,
@@ -97,6 +102,7 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use("/api/auth", authRoutes);
 app.use("/api/posts", postsRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/polls", pollRoutes);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
