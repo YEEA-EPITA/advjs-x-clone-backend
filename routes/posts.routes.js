@@ -1,119 +1,79 @@
 const express = require("express");
-const { body, query, param } = require("express-validator");
+const { body } = require("express-validator");
 const { postsController } = require("../controllers");
-const { authMiddleware } = require("../middlewares");
+const {
+  authMiddleware,
+  validateSchemaMiddleware,
+  uploadMiddleware,
+} = require("../middlewares");
+const { postsSchema } = require("../schemas");
 
 const router = express.Router();
 
-// Create a new post
 router.post(
   "/",
   authMiddleware,
-  [
-    body("content")
-      .isLength({ min: 1, max: 2000 })
-      .withMessage("Content must be between 1 and 2000 characters"),
-    body("contentType")
-      .optional()
-      .isIn(["text", "image", "video", "link"])
-      .withMessage("Invalid content type"),
-    body("mediaUrls")
-      .optional()
-      .isArray()
-      .withMessage("Media URLs must be an array"),
-    body("location")
-      .optional()
-      .isLength({ max: 100 })
-      .withMessage("Location must not exceed 100 characters"),
-  ],
+  uploadMiddleware.uploadSingle("media"),
+  validateSchemaMiddleware({ body: postsSchema.createPostSchema }),
   postsController.createPost
 );
 
-// Get user's personalized feed
 router.get(
   "/feed",
   authMiddleware,
-  [
-    query("limit")
-      .optional()
-      .isInt({ min: 1, max: 100 })
-      .withMessage("Limit must be between 1 and 100"),
-    query("offset")
-      .optional()
-      .isInt({ min: 0 })
-      .withMessage("Offset must be non-negative"),
-  ],
+  validateSchemaMiddleware({ query: postsSchema.userFeedQuerySchema }),
   postsController.getUserFeed
 );
 
-// Search posts with advanced filtering
 router.get(
   "/search",
-  [
-    query("q")
-      .optional()
-      .isLength({ min: 1, max: 100 })
-      .withMessage("Search query must be between 1 and 100 characters"),
-    query("type")
-      .optional()
-      .isIn(["text", "image", "video", "link"])
-      .withMessage("Invalid content type filter"),
-    query("from")
-      .optional()
-      .isISO8601()
-      .withMessage("From date must be a valid ISO 8601 date"),
-    query("limit")
-      .optional()
-      .isInt({ min: 1, max: 100 })
-      .withMessage("Limit must be between 1 and 100"),
-  ],
+  validateSchemaMiddleware({ query: postsSchema.searchPostsQuerySchema }),
   postsController.searchPosts
 );
 
-// Get trending hashtags
 router.get(
   "/trending/hashtags",
-  [
-    query("limit")
-      .optional()
-      .isInt({ min: 1, max: 50 })
-      .withMessage("Limit must be between 1 and 50"),
-    query("hours")
-      .optional()
-      .isInt({ min: 1, max: 168 })
-      .withMessage("Hours must be between 1 and 168 (7 days)"),
-  ],
+  validateSchemaMiddleware({ query: postsSchema.trendingHashtagsQuerySchema }),
   postsController.getTrendingHashtags
 );
 
-// Like a post
 router.post(
   "/:postId/like",
   authMiddleware,
-  [param("postId").isUUID().withMessage("Post ID must be a valid UUID")],
+  validateSchemaMiddleware({ params: postsSchema.likePostParamsSchema }),
   postsController.likePost
 );
 
-// Retweet a post
 router.post(
   "/:postId/retweet",
   authMiddleware,
-  [
-    param("postId").isUUID().withMessage("Post ID must be a valid UUID"),
-    body("comment")
-      .optional()
-      .isLength({ max: 280 })
-      .withMessage("Comment must not exceed 280 characters"),
-  ],
+  validateSchemaMiddleware({
+    params: postsSchema.retweetPostParamsSchema,
+    body: postsSchema.retweetPostBodySchema,
+  }),
   postsController.retweetPost
 );
 
-// Get detailed post analytics
 router.get(
   "/:postId/analytics",
   authMiddleware,
-  [param("postId").isUUID().withMessage("Post ID must be a valid UUID")],
+  validateSchemaMiddleware({ params: postsSchema.postAnalyticsParamsSchema }),
   postsController.getPostAnalytics
 );
+
+// Add a comment to a post
+router.post(
+  "/:postId/comments",
+  authMiddleware,
+  [
+    body("content")
+      .isLength({ min: 1, max: 1000 })
+      .withMessage("Comment must be between 1 and 1000 characters"),
+  ],
+  postsController.addComment
+);
+
+// Get comments for a post
+router.get("/:postId/comments", postsController.getComments);
 
 module.exports = router;
