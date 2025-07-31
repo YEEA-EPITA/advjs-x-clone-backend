@@ -72,6 +72,8 @@ router.post(
  *       200:
  *         description: Feed retrieved successfully
  */
+router.get("/live-feeds", authMiddleware, postsController.getLiveFeeds);
+
 router.get(
   "/feed",
   authMiddleware,
@@ -244,6 +246,9 @@ router.post(
   postsController.addComment
 );
 
+// Get polls for a post
+router.get("/:postId/polls", postsController.getPollByPost);
+
 /**
  * @swagger
  * /posts/{postId}/comments:
@@ -260,6 +265,7 @@ router.post(
  *       200:
  *         description: List of comments
  */
+// Get comments for a post
 router.get("/:postId/comments", postsController.getComments);
 
 module.exports = router;
