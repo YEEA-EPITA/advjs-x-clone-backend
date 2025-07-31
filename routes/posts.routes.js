@@ -72,17 +72,7 @@ router.post(
  *       200:
  *         description: Feed retrieved successfully
  */
-router.get(
-  "/live-feeds",
-  // No auth required, public endpoint
-  postsController.getLiveFeeds
-);
-
-router.get(
-  "/live-feeds",
-  // No auth required, public endpoint
-  postsController.getLiveFeeds
-);
+router.get("/live-feeds", authMiddleware, postsController.getLiveFeeds);
 
 router.get(
   "/feed",
