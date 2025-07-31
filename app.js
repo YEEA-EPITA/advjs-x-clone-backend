@@ -19,6 +19,8 @@ const {
   apiInfoView,
   notFoundView,
 } = require("./views/systemViews");
+const swaggerUi = require("swagger-ui-express");
+const swaggerSpec = require("./config/swagger");
 
 const app = express();
 
@@ -69,7 +71,7 @@ const corsOptions = {
     // In production, only allow specific origins
     const allowedOrigins = process.env.CORS_ORIGIN
       ? process.env.CORS_ORIGIN.split(",")
-      : ["http://localhost:3000"];
+      : ["http://localhost:3000", "http://localhost:3001"];
 
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
@@ -103,6 +105,9 @@ app.use("/api/auth", authRoutes);
 app.use("/api/posts", postsRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/polls", pollRoutes);
+
+// Swagger API Docs route
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Health check endpoint
 app.get("/health", (req, res) => {
