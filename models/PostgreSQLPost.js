@@ -1,5 +1,6 @@
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../config/postgresql");
+const { PollOption } = require("./PollsModels");
 
 // Post model for PostgreSQL - handles structured data and complex queries
 const Post = sequelize.define(
@@ -202,13 +203,11 @@ Post.searchPosts = async (searchTerm, filters = {}) => {
 };
 
 // Cursor-based pagination for live feeds
-Post.findLiveFeeds = async (limit = 20, cursor = null) => {
-  // Cursor is expected to be a string: 'created_at|id'
+Post.findLiveFeeds = async (userId, limit = 20, cursor = null) => {
   let whereClause = "p.is_public = true";
-  let replacements = {};
+  const replacements = { userId };
 
   if (cursor) {
-    // Split cursor into created_at and id
     const [createdAt, id] = cursor.split("|");
     whereClause +=
       " AND (p.created_at < :createdAt OR (p.created_at = :createdAt AND p.id < :id))";
@@ -217,8 +216,15 @@ Post.findLiveFeeds = async (limit = 20, cursor = null) => {
   }
 
   const query = `
-    SELECT p.*
+    SELECT 
+      p.*,
+      poll.id AS poll_id,
+      poll.question AS poll_question,
+      poll.expires_at AS poll_expires_at,
+      pv.option_id AS selected_option_id
     FROM posts p
+    LEFT JOIN polls poll ON poll.post_id = p.id
+    LEFT JOIN poll_votes pv ON poll.id = pv.poll_id AND pv.user_id = :userId
     WHERE ${whereClause}
     ORDER BY p.created_at DESC, p.id DESC
     LIMIT :limit
@@ -230,17 +236,65 @@ Post.findLiveFeeds = async (limit = 20, cursor = null) => {
     type: sequelize.QueryTypes.SELECT,
   });
 
-  // Prepare next cursor
+  // Step 1: Extract poll_ids for batch-fetching options
+  const pollIds = results.filter((r) => r.poll_id).map((r) => r.poll_id);
+
+  let optionsMap = {};
+  if (pollIds.length > 0) {
+    const options = await PollOption.findAll({
+      where: { poll_id: pollIds },
+      attributes: ["id", "poll_id", "option_text", "vote_count"],
+      raw: true,
+    });
+
+    // Group options by poll_id
+    optionsMap = options.reduce((acc, opt) => {
+      if (!acc[opt.poll_id]) acc[opt.poll_id] = [];
+      acc[opt.poll_id].push({
+        id: opt.id,
+        option_text: opt.option_text,
+        vote_count: opt.vote_count,
+      });
+      return acc;
+    }, {});
+  }
+
+  const feeds = results.map((post) => {
+    const formattedPost = {
+      ...post,
+    };
+
+    // attach poll if exists
+    if (post.poll_id) {
+      formattedPost.poll = {
+        id: post.poll_id,
+        question: post.poll_question,
+        expires_at: post.poll_expires_at,
+        options: optionsMap[post.poll_id] || [],
+        voted: !!post.selected_option_id,
+        selected_option_id: post.selected_option_id || null,
+      };
+    }
+
+    // Cleanup
+    delete formattedPost.poll_id;
+    delete formattedPost.poll_question;
+    delete formattedPost.poll_expires_at;
+    delete formattedPost.selected_option_id;
+
+    return formattedPost;
+  });
+
   let nextCursor = null;
   let hasMore = false;
-  if (results.length === limit) {
-    const last = results[results.length - 1];
+  if (feeds.length === limit) {
+    const last = feeds[feeds.length - 1];
     nextCursor = `${last.created_at.toISOString()}|${last.id}`;
     hasMore = true;
   }
 
   return {
-    feeds: results,
+    feeds,
     nextCursor,
     hasMore,
   };
