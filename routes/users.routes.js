@@ -4,7 +4,24 @@ const router = express.Router();
 const { authMiddleware } = require("../middlewares");
 const { usersController } = require("../controllers");
 
-// Update user profile
+/**
+ * @swagger
+ * /users/profile:
+ *   put:
+ *     summary: Update authenticated user's profile
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateUserProfileInput'
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ */
 router.put(
   "/profile",
   authMiddleware,
@@ -29,14 +46,48 @@ router.put(
   usersController.updateProfile
 );
 
-// Get user public profile
+/**
+ * @swagger
+ * /users/{userId}/profile:
+ *   get:
+ *     summary: Get public profile of a user
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: MongoDB User ID
+ *     responses:
+ *       200:
+ *         description: Public profile retrieved
+ */
 router.get(
   "/:userId/profile",
   [param("userId").isMongoId().withMessage("Invalid user ID")],
   usersController.getUserProfile
 );
 
-// Follow a user
+/**
+ * @swagger
+ * /users/{userId}/follow:
+ *   post:
+ *     summary: Follow a user
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: User ID to follow
+ *     responses:
+ *       200:
+ *         description: Successfully followed the user
+ */
 router.post(
   "/:userId/follow",
   authMiddleware,
@@ -44,7 +95,25 @@ router.post(
   usersController.followUser
 );
 
-// Unfollow a user
+/**
+ * @swagger
+ * /users/{userId}/follow:
+ *   delete:
+ *     summary: Unfollow a user
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: User ID to unfollow
+ *     responses:
+ *       200:
+ *         description: Successfully unfollowed the user
+ */
 router.delete(
   "/:userId/follow",
   authMiddleware,
@@ -52,7 +121,32 @@ router.delete(
   usersController.unfollowUser
 );
 
-// Get user's followers
+/**
+ * @swagger
+ * /users/{userId}/followers:
+ *   get:
+ *     summary: Get followers of a user
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Followers retrieved successfully
+ */
 router.get(
   "/:userId/followers",
   [
@@ -69,7 +163,32 @@ router.get(
   usersController.getFollowers
 );
 
-// Get user's following
+/**
+ * @swagger
+ * /users/{userId}/following:
+ *   get:
+ *     summary: Get following list of a user
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Following list retrieved successfully
+ */
 router.get(
   "/:userId/following",
   [
