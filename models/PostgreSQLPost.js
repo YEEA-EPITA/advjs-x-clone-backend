@@ -126,7 +126,7 @@ Post.findTrendingHashtags = async (limit = 10, timeframe = 24) => {
   `;
 
   const [results] = await sequelize.query(query);
-  return results;
+  return Array.isArray(results) ? results : results != null ? [results] : [];
 };
 
 Post.findUserFeed = async (userId, limit = 20, offset = 0) => {
@@ -151,12 +151,16 @@ Post.findUserFeed = async (userId, limit = 20, offset = 0) => {
     ORDER BY p.created_at DESC
   `;
 
-  const results = await sequelize.query(query, {
-    replacements: { userId },
+  const [results] = await sequelize.query(query, {
+    replacements,
     type: sequelize.QueryTypes.SELECT,
   });
-
-  return results;
+  console.log(
+    "[Post.searchPosts] Results count:",
+    Array.isArray(results) ? results.length : results ? 1 : 0
+  );
+  console.log("[Post.searchPosts] Results:", results);
+  return Array.isArray(results) ? results : results != null ? [results] : [];
 };
 
 Post.searchPosts = async (searchTerm, filters = {}) => {
@@ -166,11 +170,9 @@ Post.searchPosts = async (searchTerm, filters = {}) => {
   if (searchTerm) {
     whereClause += ` AND (
       p.content ILIKE :searchTerm 
-      OR :searchTag = ANY(p.hashtags)
       OR p.username ILIKE :searchUser
     )`;
     replacements.searchTerm = `%${searchTerm}%`;
-    replacements.searchTag = searchTerm.replace("#", "");
     replacements.searchUser = `%${searchTerm}%`;
   }
 
@@ -194,7 +196,9 @@ Post.searchPosts = async (searchTerm, filters = {}) => {
     LIMIT ${filters.limit || 50}
   `;
 
-  const [results] = await sequelize.query(query, {
+  // ...existing code...
+
+  const results = await sequelize.query(query, {
     replacements,
     type: sequelize.QueryTypes.SELECT,
   });
