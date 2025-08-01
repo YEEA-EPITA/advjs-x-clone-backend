@@ -2,54 +2,50 @@ const Post = require("../models/PostgreSQLPost");
 const { uploadToS3 } = require("../utils/s3");
 const { UserLike, UserRetweet, Poll, PollOption } = require("../models");
 const { sequelize } = require("../config/postgresql");
-const { ResponseFactory, ErrorFactory } = require("../factories");
 
 // Post controller using PostgreSQL for complex queries and analytics
 const postsController = {
   // Get all public posts as live feeds with cursor-based pagination
   getLiveFeeds: async (req, res) => {
     try {
-      const jwtUser = req.user;
       const limit = Math.min(parseInt(req.query.limit) || 20, 100);
       const cursor = req.query.cursor || null;
 
       // Fetch live feeds from model
       const { feeds, nextCursor, hasMore } = await Post.findLiveFeeds(
-        jwtUser._id.toString(),
         limit,
         cursor
       );
 
-      return ResponseFactory.success({
-        res,
+      res.json({
+        success: true,
         message: "Live feeds retrieved successfully",
-        data: {
-          feeds,
-          pagination: {
-            limit,
-            nextCursor,
-            hasMore,
-          },
+        feeds,
+        pagination: {
+          limit,
+          nextCursor,
+          hasMore,
         },
       });
     } catch (error) {
-      return ErrorFactory.internalServerError({
-        res,
-        message: "Failed to retrieve live feeds",
-        error: error.message,
+      console.error("Get live feeds error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to retrieve live feeds",
+        message: error.message,
       });
     }
   },
-  // ...rest of postsController methods...
+
   // Add a comment to a post
   addComment: async (req, res) => {
     const Comment = require("../models/Comment");
     const { postId } = req.params;
     const { content } = req.body;
     if (!content || content.trim() === "") {
-      return ErrorFactory.badRequest({
-        res,
-        message: "Comment content is required",
+      return res.status(400).json({
+        success: false,
+        error: "Comment content is required",
       });
     }
     try {
@@ -337,7 +333,6 @@ const postsController = {
   // Like a post with SQL transaction
   likePost: async (req, res) => {
     const transaction = await sequelize.transaction();
-
     try {
       const { postId } = req.params;
       const userId = req.user._id.toString();
@@ -349,13 +344,28 @@ const postsController = {
       });
 
       if (existingLike) {
-        return res.status(400).json({
-          success: false,
-          error: "Post already liked",
+        // Unlike: remove like record and decrement like_count
+        await UserLike.destroy({
+          where: { user_id: userId, post_id: postId },
+          transaction,
+        });
+        await sequelize.query(
+          "UPDATE posts SET like_count = like_count - 1 WHERE id = :postId AND like_count > 0",
+          {
+            replacements: { postId },
+            type: sequelize.QueryTypes.UPDATE,
+            transaction,
+          }
+        );
+        await transaction.commit();
+        return res.json({
+          success: true,
+          message: "Post unliked successfully",
+          post_id: postId,
         });
       }
 
-      // Create like record
+      // Like: create like record and increment like_count
       await UserLike.create(
         {
           user_id: userId,
@@ -364,8 +374,6 @@ const postsController = {
         },
         { transaction }
       );
-
-      // Update post like count
       await sequelize.query(
         "UPDATE posts SET like_count = like_count + 1 WHERE id = :postId",
         {
@@ -374,19 +382,18 @@ const postsController = {
           transaction,
         }
       );
-
       await transaction.commit();
-
       res.json({
         success: true,
         message: "Post liked successfully",
+        post_id: postId,
       });
     } catch (error) {
       await transaction.rollback();
       console.error("Like post error:", error);
       res.status(500).json({
         success: false,
-        error: "Failed to like post",
+        error: "Failed to like/unlike post",
         message: error.message,
       });
     }
