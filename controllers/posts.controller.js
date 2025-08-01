@@ -1,5 +1,6 @@
 const Post = require("../models/PostgreSQLPost");
 const { uploadToS3 } = require("../utils/s3");
+const { getIO } = require("../utils/socket");
 const { UserLike, UserRetweet, Poll, PollOption } = require("../models");
 const { sequelize } = require("../config/postgresql");
 const { ResponseFactory, ErrorFactory } = require("../factories");
@@ -225,6 +226,21 @@ const postsController = {
           options: pollOptions,
         };
       }
+
+      getIO().emit("new_feed", {
+        id: post.id,
+        content: post.content,
+        username: post.username,
+        createdAt: post.created_at,
+        mediaUrls: post.media_urls,
+        poll: createdPoll
+          ? {
+              id: createdPoll.id,
+              question: createdPoll.question,
+              options: poll.options,
+            }
+          : null,
+      });
 
       res.status(201).json({
         success: true,
