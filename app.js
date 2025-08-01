@@ -6,6 +6,9 @@ const compression = require("compression");
 const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
+const http = require("http");
+const { socketManager } = require("./utils");
+
 const connectMongoDB = require("./config/mongodb");
 const { connectPostgreSQL } = require("./config/postgresql");
 const {
@@ -23,6 +26,10 @@ const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./config/swagger");
 
 const app = express();
+
+const server = http.createServer(app);
+// Initialize Socket.IO
+const io = socketManager.init(server);
 
 // Database connections (MongoDB for auth, PostgreSQL for posts/analytics)
 const initializeDatabases = async () => {
@@ -50,6 +57,14 @@ const initializeDatabases = async () => {
   }
 }; // Initialize databases
 initializeDatabases();
+
+io.on("connection", (socket) => {
+  console.log("🟢 A client connected:", socket.id);
+
+  socket.on("disconnect", (reason) => {
+    console.log(`🔴 Disconnected: ${socket?.id}, reason: ${reason}`);
+  });
+});
 
 // Security middleware
 app.use(helmet());
@@ -138,7 +153,7 @@ app.use("*", (req, res) => {
 
 const PORT = process.env.PORT || 8080;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
