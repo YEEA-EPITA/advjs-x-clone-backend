@@ -25,6 +25,6 @@ const router = express.Router();
  */
 
 // GET /api/notifications
-router.get("/notifications", authMiddleware, getNotifications);
+router.get("/", authMiddleware, getNotifications);
 
 module.exports = router;
