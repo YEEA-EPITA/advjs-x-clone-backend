@@ -378,6 +378,13 @@ const postsController = {
           }
         );
         await transaction.commit();
+
+        // Emit socket event for like update
+        getIO().emit("likeUpdated", {
+          post_id: postId,
+          action: "unlike",
+        });
+
         return res.json({
           success: true,
           message: "Post unliked successfully",
@@ -403,6 +410,13 @@ const postsController = {
         }
       );
       await transaction.commit();
+
+      // Emit socket event for like update
+      getIO().emit("likeUpdated", {
+        post_id: postId,
+        action: "like",
+      });
+
       res.json({
         success: true,
         message: "Post liked successfully",
