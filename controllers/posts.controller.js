@@ -2,6 +2,7 @@ const Post = require("../models/PostgreSQLPost");
 const { uploadToS3 } = require("../utils/s3");
 const { UserLike, UserRetweet, Poll, PollOption } = require("../models");
 const { sequelize } = require("../config/postgresql");
+const { ResponseFactory, ErrorFactory } = require("../factories");
 
 // Post controller using PostgreSQL for complex queries and analytics
 const postsController = {
@@ -19,22 +20,23 @@ const postsController = {
         cursor
       );
 
-      res.json({
-        success: true,
+      return ResponseFactory.success({
+        res,
         message: "Live feeds retrieved successfully",
-        feeds,
-        pagination: {
-          limit,
-          nextCursor,
-          hasMore,
+        data: {
+          feeds,
+          pagination: {
+            limit,
+            nextCursor,
+            hasMore,
+          },
         },
       });
     } catch (error) {
-      console.error("Get live feeds error:", error);
-      res.status(500).json({
-        success: false,
-        error: "Failed to retrieve live feeds",
-        message: error.message,
+      return ErrorFactory.internalServerError({
+        res,
+        message: "Failed to retrieve live feeds",
+        error: error.message,
       });
     }
   },
