@@ -424,7 +424,7 @@ const postsController = {
     try {
       const { postId } = req.params;
 
-      // Complex query to get comprehensive post analytics
+      // Get analytics (as before)
       const [analytics] = await sequelize.query(
         `
         SELECT 
@@ -434,18 +434,15 @@ const postsController = {
           p.like_count,
           p.retweet_count,
           p.comment_count,
-          
+          p.media_urls,
           -- Engagement metrics
           (p.like_count + p.retweet_count + p.comment_count) as total_engagement,
-          
           -- Time-based analytics
           COUNT(DISTINCT ul.user_id) as unique_likers,
           COUNT(DISTINCT ur.user_id) as unique_retweeters,
-          
           -- Recent engagement (last 24 hours)
           COUNT(DISTINCT CASE WHEN ul.liked_at >= NOW() - INTERVAL '24 hours' THEN ul.user_id END) as recent_likes,
           COUNT(DISTINCT CASE WHEN ur.retweeted_at >= NOW() - INTERVAL '24 hours' THEN ur.user_id END) as recent_retweets,
-          
           -- Engagement rate calculation
           ROUND(
             ((p.like_count + p.retweet_count + p.comment_count) * 100.0) / 
@@ -454,12 +451,11 @@ const postsController = {
               WHERE following_id = p.user_id
             ), 1), 2
           ) as engagement_rate_percent
-          
         FROM posts p
         LEFT JOIN user_likes ul ON p.id = ul.post_id
         LEFT JOIN user_retweets ur ON p.id = ur.post_id
         WHERE p.id = :postId
-        GROUP BY p.id, p.content, p.created_at, p.like_count, p.retweet_count, p.comment_count, p.user_id
+        GROUP BY p.id, p.content, p.created_at, p.like_count, p.retweet_count, p.comment_count, p.media_urls, p.user_id
       `,
         {
           replacements: { postId },
@@ -474,10 +470,20 @@ const postsController = {
         });
       }
 
+      // Get comments for the post
+      const Comment = require("../models/Comment");
+      const comments = await Comment.findAll({
+        where: { post_id: postId },
+        order: [["created_at", "DESC"]],
+      });
+
       res.json({
         success: true,
         message: "Post analytics retrieved successfully",
-        analytics,
+        analytics: {
+          ...analytics,
+          comments,
+        },
       });
     } catch (error) {
       console.error("Get post analytics error:", error);
