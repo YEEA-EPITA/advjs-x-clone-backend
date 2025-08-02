@@ -111,12 +111,12 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 
 // Get followers count
 userSchema.virtual("followersCount").get(function () {
-  return this.followers.length;
+  return Array.isArray(this.followers) ? this.followers.length : 0;
 });
 
 // Get following count
 userSchema.virtual("followingCount").get(function () {
-  return this.following.length;
+  return Array.isArray(this.following) ? this.following.length : 0;
 });
 
 userSchema.set("toJSON", { virtuals: true });

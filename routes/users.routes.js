@@ -6,6 +6,34 @@ const { usersController } = require("../controllers");
 
 /**
  * @swagger
+ * /users/search:
+ *   get:
+ *     summary: Search users by username or displayName
+ *     tags: [Users]
+ *     parameters:
+ *       - in: query
+ *         name: q
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: Search keyword
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         required: false
+ *         description: Max number of results
+ *     responses:
+ *       200:
+ *         description: User search results
+ */
+router.get(
+  "/search",
+  require("../controllers/search.controller.js").searchUsers
+);
+
+/**
+ * @swagger
  * /users/profile:
  *   put:
  *     summary: Update authenticated user's profile
