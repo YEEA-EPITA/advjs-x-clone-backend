@@ -12,7 +12,9 @@ const postsController = {
       const cursor = req.query.cursor || null;
 
       // Fetch live feeds from model
+      const userId = req.user?._id?.toString() || null;
       const { feeds, nextCursor, hasMore } = await Post.findLiveFeeds(
+        userId,
         limit,
         cursor
       );
