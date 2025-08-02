@@ -424,12 +424,14 @@ const postsController = {
     try {
       const { postId } = req.params;
 
-      // Get analytics (as before)
+      // Get analytics (now with user_id and username)
       const [analytics] = await sequelize.query(
         `
         SELECT 
           p.id,
           p.content,
+          p.user_id,
+          p.username,
           p.created_at,
           p.like_count,
           p.retweet_count,
@@ -455,7 +457,7 @@ const postsController = {
         LEFT JOIN user_likes ul ON p.id = ul.post_id
         LEFT JOIN user_retweets ur ON p.id = ur.post_id
         WHERE p.id = :postId
-        GROUP BY p.id, p.content, p.created_at, p.like_count, p.retweet_count, p.comment_count, p.media_urls, p.user_id
+        GROUP BY p.id, p.content, p.user_id, p.username, p.created_at, p.like_count, p.retweet_count, p.comment_count, p.media_urls
       `,
         {
           replacements: { postId },
@@ -470,6 +472,16 @@ const postsController = {
         });
       }
 
+      // Get displayName from MongoDB User collection
+      const User = require("../models/UserModels");
+      let displayName = null;
+      if (analytics.user_id) {
+        const userDoc = await User.findById(analytics.user_id).select(
+          "displayName"
+        );
+        displayName = userDoc ? userDoc.displayName : null;
+      }
+
       // Get comments for the post
       const Comment = require("../models/Comment");
       const comments = await Comment.findAll({
@@ -477,13 +489,30 @@ const postsController = {
         order: [["created_at", "DESC"]],
       });
 
+      // Reorder analytics fields for response
+      const orderedAnalytics = {
+        id: analytics.id,
+        content: analytics.content,
+        user_id: analytics.user_id,
+        username: analytics.username,
+        displayName,
+        created_at: analytics.created_at,
+        like_count: analytics.like_count,
+        retweet_count: analytics.retweet_count,
+        comment_count: analytics.comment_count,
+        media_urls: analytics.media_urls,
+        total_engagement: analytics.total_engagement,
+        unique_likers: analytics.unique_likers,
+        unique_retweeters: analytics.unique_retweeters,
+        recent_likes: analytics.recent_likes,
+        recent_retweets: analytics.recent_retweets,
+        engagement_rate_percent: analytics.engagement_rate_percent,
+        comments,
+      };
       res.json({
         success: true,
         message: "Post analytics retrieved successfully",
-        analytics: {
-          ...analytics,
-          comments,
-        },
+        analytics: orderedAnalytics,
       });
     } catch (error) {
       console.error("Get post analytics error:", error);
