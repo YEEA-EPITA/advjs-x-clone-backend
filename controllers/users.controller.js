@@ -1,6 +1,44 @@
 const { validationResult } = require("express-validator");
 const User = require("../models/UserModels");
 const { formatUserResponse } = require("../views/authViews");
+const { ResponseFactory, ErrorFactory } = require("../factories");
+
+/**
+ * Get follow suggestions (users not already followed by current user)
+ */
+const getFollowSuggestions = async (req, res) => {
+  try {
+    const currentUserId = req.user._id;
+    // Get current user's following list
+    const currentUser = await User.findById(currentUserId).select("following");
+    if (!currentUser) {
+      return ErrorFactory.notFound({
+        res,
+        message: "User not found",
+      });
+    }
+    // Exclude self and users already followed
+    const excludeIds = [
+      currentUserId,
+      ...currentUser.following.map((id) => id.toString()),
+    ];
+    const suggestions = await User.find({ _id: { $nin: excludeIds } })
+      .select("_id username displayName profilePicture")
+      .limit(20);
+    return ResponseFactory.success({
+      res,
+      message: "Follow suggestions retrieved successfully",
+      data: { suggestions },
+    });
+  } catch (error) {
+    console.error("Get follow suggestions error:", error);
+    return ErrorFactory.internalServerError({
+      res,
+      message: "Failed to get suggestions",
+      error: error.message,
+    });
+  }
+};
 
 /**
  * Update user profile information
@@ -254,4 +292,5 @@ module.exports = {
   unfollowUser,
   getFollowers,
   getFollowing,
+  getFollowSuggestions,
 };
