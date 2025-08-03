@@ -557,18 +557,19 @@ const postsController = {
         // Remove retweet (unretweet)
         await existingRetweet.destroy({ transaction });
 
-        // Decrement retweet count
-        await post.update(
-          { retweet_count: Math.max(0, post.retweet_count - 1) },
-          { transaction }
-        );
+        // Recalculate retweet count
+        const newCount = await UserRetweet.count({
+          where: { post_id: postId },
+          transaction,
+        });
+        await post.update({ retweet_count: newCount }, { transaction });
 
         await transaction.commit();
 
         return res.json({
           success: true,
           message: "Post unretweeted successfully",
-          retweetCount: Math.max(0, post.retweet_count - 1),
+          retweetCount: newCount,
           isRetweeted: false,
         });
       } else {
@@ -583,18 +584,19 @@ const postsController = {
           { transaction }
         );
 
-        // Increment retweet count
-        await post.update(
-          { retweet_count: post.retweet_count + 1 },
-          { transaction }
-        );
+        // Recalculate retweet count
+        const newCount = await UserRetweet.count({
+          where: { post_id: postId },
+          transaction,
+        });
+        await post.update({ retweet_count: newCount }, { transaction });
 
         await transaction.commit();
 
         return res.json({
           success: true,
           message: "Post retweeted successfully",
-          retweetCount: post.retweet_count + 1,
+          retweetCount: newCount,
           isRetweeted: true,
         });
       }
