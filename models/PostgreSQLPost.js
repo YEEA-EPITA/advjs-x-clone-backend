@@ -151,7 +151,8 @@ Post.findUserFeed = async (userId, limit = 20, offset = 0) => {
     ORDER BY p.created_at DESC
   `;
 
-  const [results] = await sequelize.query(query, {
+  const replacements = { userId };
+  const results = await sequelize.query(query, {
     replacements,
     type: sequelize.QueryTypes.SELECT,
   });
@@ -160,7 +161,7 @@ Post.findUserFeed = async (userId, limit = 20, offset = 0) => {
     Array.isArray(results) ? results.length : results ? 1 : 0
   );
   console.log("[Post.searchPosts] Results:", results);
-  return Array.isArray(results) ? results : results != null ? [results] : [];
+  return results;
 };
 
 Post.searchPosts = async (searchTerm, filters = {}) => {

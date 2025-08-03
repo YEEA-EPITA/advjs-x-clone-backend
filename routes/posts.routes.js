@@ -199,6 +199,69 @@ router.post(
  *     responses:
  *       200:
  *         description: Post analytics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 analytics:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     content:
+ *                       type: string
+ *                     created_at:
+ *                       type: string
+ *                       format: date-time
+ *                     like_count:
+ *                       type: integer
+ *                     retweet_count:
+ *                       type: integer
+ *                     comment_count:
+ *                       type: integer
+ *                     media_urls:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                     total_engagement:
+ *                       type: integer
+ *                     unique_likers:
+ *                       type: integer
+ *                     unique_retweeters:
+ *                       type: integer
+ *                     recent_likes:
+ *                       type: integer
+ *                     recent_retweets:
+ *                       type: integer
+ *                     engagement_rate_percent:
+ *                       type: number
+ *                       format: float
+ *                     comments:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           post_id:
+ *                             type: string
+ *                           user_id:
+ *                             type: string
+ *                           username:
+ *                             type: string
+ *                           content:
+ *                             type: string
+ *                           created_at:
+ *                             type: string
+ *                             format: date-time
+ *                           updated_at:
+ *                             type: string
+ *                             format: date-time
  */
 router.get(
   "/:postId/analytics",
