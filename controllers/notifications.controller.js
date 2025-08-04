@@ -1,5 +1,6 @@
-const Notification = require("../models/Notification");
+const Notification = require("../models/PostgreSQLNotification");
 const moment = require("moment");
+const { ResponseFactory, ErrorFactory } = require("../factories");
 
 // Time format time (e.g., "Just now", "3m", "1d" ...)
 function formatTime(date) {
@@ -15,26 +16,35 @@ function formatTime(date) {
 // GET /api/notifications
 const getNotifications = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const notifications = await Notification.find({ recipient: userId })
-      .sort({ time: -1 })
-      .limit(50);
+    // Always use string for recipient_id
+    const userId = req.user._id ? req.user._id.toString() : req.user.id;
+    const notifications = await Notification.findAll({
+      where: { recipient_id: userId },
+      order: [["created_at", "DESC"]],
+      limit: 50,
+    });
 
     const formatted = notifications.map((n) => ({
-      id: n._id.toString(),
+      id: n.id,
       type: n.type,
-      user: n.user,
+      actor_username: n.actor_username,
       message: n.message,
-      time: formatTime(n.time),
+      post_id: n.post_id,
+      is_read: n.is_read,
+      time: formatTime(n.created_at),
     }));
 
-    res.json(formatted);
+    return ResponseFactory.success({
+      res,
+      message: "Notifications retrieved successfully",
+      data: formatted,
+    });
   } catch (error) {
     console.error("Get notifications error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to get notifications",
-      message: error.message,
+    return ErrorFactory.internalServerError({
+      res,
+      message: "Failed to get notifications",
+      error: error.message,
     });
   }
 };

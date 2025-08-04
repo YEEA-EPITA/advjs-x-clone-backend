@@ -13,77 +13,75 @@ const generalsearch = async (req, res) => {
     let nextUserCursor = null;
     let nextPostCursor = null;
 
-    // USERS CURSOR PAGINATION
-    let userQuery = {};
-    if (userCursor) {
-      userQuery._id = { $lt: userCursor };
-    }
-
-    // POSTS CURSOR PAGINATION
-    let postFilters = { limit: limit + 1 };
-    if (postCursor) {
-      // postCursor format: created_at|id
-      const [created_at, id] = postCursor.split("|");
-      postFilters.cursor = { created_at, id };
-    }
-
     if (!q.trim()) {
-      // Return all users and all posts (with cursors)
+      // No search query: return all users and posts with cursor-based pagination
+      // Users: use _id for cursor
+      const userQuery = {};
+      if (userCursor) {
+        userQuery._id = { $gt: userCursor };
+      }
       users = await User.find(userQuery)
         .select("_id username displayName profilePicture bio")
-        .limit(limit + 1)
-        .sort({ createdAt: -1 });
+        .sort({ _id: 1 })
+        .limit(limit + 1);
       if (users.length > limit) {
         nextUserCursor = users[limit]._id;
         users = users.slice(0, limit);
       }
-      try {
-        posts = await Post.searchPosts(null, postFilters);
-        if (posts.length > limit) {
-          const last = posts[limit];
-          nextPostCursor = `${last.created_at.toISOString()}|${last.id}`;
-          posts = posts.slice(0, limit);
-        }
-      } catch (err) {
-        posts = [];
+
+      // Posts: use created_at + id for cursor
+      let postFilters = { is_public: true };
+      let postWhere = "p.is_public = true";
+      let postReplacements = {};
+      if (postCursor) {
+        // postCursor format: created_at|id
+        const [createdAt, id] = postCursor.split("|");
+        postWhere +=
+          " AND (p.created_at < :createdAt OR (p.created_at = :createdAt AND p.id < :id))";
+        postReplacements.createdAt = createdAt;
+        postReplacements.id = id;
+      }
+      const postQuery = `
+        SELECT p.* FROM posts p
+        WHERE ${postWhere}
+        ORDER BY p.created_at DESC, p.id DESC
+        LIMIT :limit
+      `;
+      postReplacements.limit = limit + 1;
+      const postResults = await Post.sequelize.query(postQuery, {
+        replacements: postReplacements,
+        type: Post.sequelize.QueryTypes.SELECT,
+      });
+      posts = postResults;
+      if (posts.length > limit) {
+        const last = posts[limit];
+        nextPostCursor = `${last.created_at.toISOString()}|${last.id}`;
+        posts = posts.slice(0, limit);
       }
     } else {
       // Search users (fuzzy)
       let usersRaw = [];
-      let searchUserQuery = userQuery;
       try {
-        searchUserQuery = { ...searchUserQuery, $text: { $search: q } };
-        usersRaw = await User.find(searchUserQuery)
+        usersRaw = await User.find({ $text: { $search: q } })
           .select("_id username displayName profilePicture bio score")
-          .limit(limit + 1)
+          .limit(limit)
           .sort({ score: { $meta: "textScore" } });
       } catch (err) {
-        searchUserQuery = {
-          ...searchUserQuery,
+        usersRaw = await User.find({
           $or: [
             { username: { $regex: q, $options: "i" } },
             { displayName: { $regex: q, $options: "i" } },
           ],
-        };
-        usersRaw = await User.find(searchUserQuery)
+        })
           .select("_id username displayName profilePicture bio")
-          .limit(limit + 1);
+          .limit(limit);
       }
       users = Array.isArray(usersRaw) ? usersRaw : usersRaw ? [usersRaw] : [];
-      if (users.length > limit) {
-        nextUserCursor = users[limit]._id;
-        users = users.slice(0, limit);
-      }
       if (!Array.isArray(users)) users = [];
 
       // Search posts (content and username)
       try {
-        posts = await Post.searchPosts(q, postFilters);
-        if (posts.length > limit) {
-          const last = posts[limit];
-          nextPostCursor = `${last.created_at.toISOString()}|${last.id}`;
-          posts = posts.slice(0, limit);
-        }
+        posts = await Post.searchPosts(q, { limit });
       } catch (err) {
         posts = [];
       }
