@@ -1,12 +1,52 @@
 const Post = require("../models/PostgreSQLPost");
 const { uploadToS3 } = require("../utils/s3");
 const { getIO } = require("../utils/socket");
-const { UserLike, UserRetweet, Poll, PollOption } = require("../models");
+const { Poll, PollOption, UserLike, UserRetweet } = require("../models");
+const Comment = require("../models/Comment");
 const { sequelize } = require("../config/postgresql");
 const { ResponseFactory, ErrorFactory } = require("../factories");
+const NotificationService = require("./NotificationService");
 
 // Post controller using PostgreSQL for complex queries and analytics
 const postsController = {
+  // Soft delete a post (mark as deleted, do not remove data or S3 images)
+  deletePost: async (req, res) => {
+    try {
+      const { postId } = req.params;
+      const userId = req.user._id.toString();
+      // Find the post
+      const post = await Post.findByPk(postId);
+      if (!post) {
+        return ErrorFactory.internalServerError({
+          res,
+          message: "Post not found",
+        });
+      }
+      if (post.user_id !== userId) {
+        return ErrorFactory.internalServerError({
+          res,
+          message: "Unauthorized: You can only delete your own posts",
+        });
+      }
+
+      // Soft delete: set is_deleted and deleted_at
+      post.is_deleted = true;
+      post.deleted_at = new Date();
+      await post.save();
+
+      return ResponseFactory.success({
+        res,
+        message: "Post deleted successfully",
+      });
+    } catch (error) {
+      console.error("Delete post error:", error);
+      return ErrorFactory.internalServerError({
+        res,
+        message: "Failed to delete post",
+        error: error.message,
+      });
+    }
+  },
   // Get all public posts as live feeds with cursor-based pagination
   getLiveFeeds: async (req, res) => {
     try {
@@ -54,6 +94,14 @@ const postsController = {
       });
     }
     try {
+      // Block if post is soft deleted
+      const post = await Post.findByPk(postId);
+      if (!post || post.is_deleted) {
+        return res.status(404).json({
+          success: false,
+          error: "Post not found or has been deleted",
+        });
+      }
       const comment = await Comment.create({
         post_id: postId,
         user_id: req.user._id.toString(),
@@ -62,6 +110,13 @@ const postsController = {
       });
       // Optionally increment comment_count in posts table
       await Post.increment("comment_count", { where: { id: postId } });
+
+      // Create comment notification for post owner using NotificationService
+      await NotificationService.createCommentNotification({
+        post,
+        actor: req.user,
+      });
+
       res.status(201).json({
         success: true,
         message: "Comment added successfully",
@@ -109,6 +164,14 @@ const postsController = {
     const Comment = require("../models/Comment");
     const { postId } = req.params;
     try {
+      // Check if post is soft deleted
+      const post = await Post.findByPk(postId);
+      if (!post || post.is_deleted) {
+        return res.status(404).json({
+          success: false,
+          error: "Post not found or has been deleted",
+        });
+      }
       const comments = await Comment.findAll({
         where: { post_id: postId },
         order: [["created_at", "DESC"]],
@@ -152,6 +215,12 @@ const postsController = {
         content?.match(/#\w+/g)?.map((tag) => tag.substring(1)) || [];
       const mentions =
         content?.match(/@\w+/g)?.map((mention) => mention.substring(1)) || [];
+
+      // Create mention notifications for each mentioned user using NotificationService
+      await NotificationService.createMentionNotifications({
+        mentionedUsernames: mentions,
+        actor: jwtUser,
+      });
 
       const mediaUrls = [];
 
@@ -357,6 +426,16 @@ const postsController = {
       const { postId } = req.params;
       const userId = req.user._id.toString();
 
+      // Block if post is soft deleted
+      const post = await Post.findByPk(postId);
+      if (!post || post.is_deleted) {
+        await transaction.rollback();
+        return res.status(404).json({
+          success: false,
+          error: "Post not found or has been deleted",
+        });
+      }
+
       // Check if already liked
       const existingLike = await UserLike.findOne({
         where: { user_id: userId, post_id: postId },
@@ -403,6 +482,13 @@ const postsController = {
         }
       );
       await transaction.commit();
+
+      // Create like notification for post owner using NotificationService
+      await NotificationService.createLikeNotification({
+        post,
+        actor: req.user,
+      });
+
       res.json({
         success: true,
         message: "Post liked successfully",
@@ -423,6 +509,15 @@ const postsController = {
   getPostAnalytics: async (req, res) => {
     try {
       const { postId } = req.params;
+
+      // Block if post is soft deleted
+      const post = await Post.findByPk(postId);
+      if (!post || post.is_deleted) {
+        return res.status(404).json({
+          success: false,
+          error: "Post not found or has been deleted",
+        });
+      }
 
       // Complex query to get comprehensive post analytics
       const [analytics] = await sequelize.query(
@@ -499,13 +594,13 @@ const postsController = {
       const userId = req.user._id.toString();
       const username = req.user.username;
 
-      // Check if post exists
+      // Block if post is soft deleted
       const post = await Post.findByPk(postId);
-      if (!post) {
+      if (!post || post.is_deleted) {
         await transaction.rollback();
         return res.status(404).json({
           success: false,
-          error: "Post not found",
+          error: "Post not found or has been deleted",
         });
       }
 
@@ -522,18 +617,24 @@ const postsController = {
         // Remove retweet (unretweet)
         await existingRetweet.destroy({ transaction });
 
-        // Decrement retweet count
-        await post.update(
-          { retweet_count: Math.max(0, post.retweet_count - 1) },
-          { transaction }
+        // Decrement retweet count atomically
+        await sequelize.query(
+          "UPDATE posts SET retweet_count = GREATEST(retweet_count - 1, 0) WHERE id = :postId",
+          {
+            replacements: { postId },
+            type: sequelize.QueryTypes.UPDATE,
+            transaction,
+          }
         );
 
         await transaction.commit();
 
+        // Fetch updated count
+        const updatedPost = await Post.findByPk(postId);
         return res.json({
           success: true,
           message: "Post unretweeted successfully",
-          retweetCount: Math.max(0, post.retweet_count - 1),
+          retweetCount: updatedPost.retweet_count,
           isRetweeted: false,
         });
       } else {
@@ -548,18 +649,30 @@ const postsController = {
           { transaction }
         );
 
-        // Increment retweet count
-        await post.update(
-          { retweet_count: post.retweet_count + 1 },
-          { transaction }
+        // Increment retweet count atomically
+        await sequelize.query(
+          "UPDATE posts SET retweet_count = retweet_count + 1 WHERE id = :postId",
+          {
+            replacements: { postId },
+            type: sequelize.QueryTypes.UPDATE,
+            transaction,
+          }
         );
+
+        // Create retweet notification for post owner using NotificationService
+        await NotificationService.createRetweetNotification({
+          post,
+          actor: req.user,
+        });
 
         await transaction.commit();
 
+        // Fetch updated count
+        const updatedPost = await Post.findByPk(postId);
         return res.json({
           success: true,
           message: "Post retweeted successfully",
-          retweetCount: post.retweet_count + 1,
+          retweetCount: updatedPost.retweet_count,
           isRetweeted: true,
         });
       }

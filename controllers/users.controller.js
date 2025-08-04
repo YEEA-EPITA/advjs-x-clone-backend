@@ -124,6 +124,15 @@ const followUser = async (req, res) => {
       $push: { following: userId },
     });
 
+    // Create follow notification using NotificationService
+    const NotificationService = require("./NotificationService");
+    const actorUser = await User.findById(currentUserId).select("_id username");
+    const followedUser = await User.findById(userId).select("_id username");
+    await NotificationService.createFollowNotification({
+      followedUser,
+      actor: actorUser,
+    });
+
     res.status(200).json({
       success: true,
       message: "User followed successfully",

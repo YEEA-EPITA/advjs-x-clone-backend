@@ -16,6 +16,7 @@ const {
   postsRoutes,
   usersRoutes,
   pollRoutes,
+  notificationsRoutes,
 } = require("./routes");
 const {
   healthCheckView,
@@ -121,6 +122,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/posts", postsRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/polls", pollRoutes);
+app.use("/api/notifications", notificationsRoutes);
 app.use("/api", generalsearchRoutes);
 
 // Swagger API Docs route

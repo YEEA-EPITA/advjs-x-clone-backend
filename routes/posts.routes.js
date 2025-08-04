@@ -268,4 +268,29 @@ router.get("/:postId/polls", postsController.getPollByPost);
 // Get comments for a post
 router.get("/:postId/comments", postsController.getComments);
 
+/**
+ * @swagger
+ * /posts/{postId}:
+ *   delete:
+ *     summary: Delete a post and all related data (likes, retweets, comments, images)
+ *     tags: [Posts]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: postId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The ID of the post to delete
+ *     responses:
+ *       200:
+ *         description: Post and related data deleted successfully
+ *       404:
+ *         description: Post not found
+ *       500:
+ *         description: Failed to delete post
+ */
+router.delete("/:postId", authMiddleware, postsController.deletePost);
+
 module.exports = router;
