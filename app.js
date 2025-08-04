@@ -85,13 +85,7 @@ const corsOptions = {
     }
 
     // In production, only allow specific origins
-    const allowedOrigins = process.env.CORS_ORIGIN
-      ? process.env.CORS_ORIGIN.split(",")
-      : [
-          "http://localhost:3000",
-          "http://localhost:3001",
-          "https://advjs-x-clone-frontend.vercel.app",
-        ];
+    const allowedOrigins = process.env.CORS_ORIGIN.split(",");
 
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
