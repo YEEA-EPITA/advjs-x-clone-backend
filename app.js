@@ -87,7 +87,11 @@ const corsOptions = {
     // In production, only allow specific origins
     const allowedOrigins = process.env.CORS_ORIGIN
       ? process.env.CORS_ORIGIN.split(",")
-      : ["http://localhost:3000", "http://localhost:3001"];
+      : [
+          "http://localhost:3000",
+          "http://localhost:3001",
+          "https://advjs-x-clone-frontend.vercel.app",
+        ];
 
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
@@ -161,5 +165,3 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
-module.exports = app;
