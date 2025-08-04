@@ -99,7 +99,7 @@ const corsOptions = {
 };
 
 // app.use(cors(corsOptions));
-app.use(cors({ origin: "*", credentials: true }));
+app.use(cors({ origin: "*" }));
 
 // Rate limiting
 const limiter = rateLimit({
