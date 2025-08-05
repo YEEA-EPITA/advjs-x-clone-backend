@@ -11,6 +11,7 @@ class NotificationService {
       await Notification.create({
         recipient_id: post.user_id,
         actor_username: actor.username,
+        actor_id: actor._id.toString(),
         type: "comment",
         post_id: post.id || post._id,
         message: `${actor.username} commented on your post`,
@@ -25,6 +26,7 @@ class NotificationService {
       await Notification.create({
         recipient_id: post.user_id,
         actor_username: actor.username,
+        actor_id: actor._id.toString(),
         type: "like",
         post_id: post.id || post._id,
         message: `${actor.username} liked your post`,
@@ -39,6 +41,7 @@ class NotificationService {
       await Notification.create({
         recipient_id: post.user_id,
         actor_username: actor.username,
+        actor_id: actor._id.toString(),
         type: "retweet",
         post_id: post.id || post._id,
         message: `${actor.username} retweeted your post`,
@@ -59,6 +62,7 @@ class NotificationService {
         await Notification.create({
           recipient_id: mentionedUser._id.toString(),
           actor_username: actor.username,
+          actor_id: actor._id.toString(),
           type: "mention",
           post_id: null,
           message: `${actor.username} mentioned you in a post`,
@@ -74,6 +78,7 @@ class NotificationService {
       await Notification.create({
         recipient_id: followedUser._id.toString(),
         actor_username: actor.username,
+        actor_id: actor._id.toString(),
         type: "follow",
         post_id: null,
         message: `${actor.username} followed you`,

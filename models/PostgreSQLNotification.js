@@ -20,6 +20,11 @@ const Notification = sequelize.define(
       allowNull: false,
       comment: "Username of the user who triggered the notification",
     },
+    actor_id: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      comment: "User ID of the user who triggered the notification",
+    },
     type: {
       type: DataTypes.ENUM(
         "follow",
@@ -56,6 +61,7 @@ const Notification = sequelize.define(
     indexes: [
       { fields: ["recipient_id"] },
       { fields: ["actor_username"] },
+      { fields: ["actor_id"] },
       { fields: ["type"] },
       { fields: ["created_at"] },
     ],

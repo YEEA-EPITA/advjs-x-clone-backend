@@ -19,6 +19,7 @@ const getNotifications = async (req, res) => {
     // Always use string for recipient_id
     const userId = req.user._id ? req.user._id.toString() : req.user.id;
     const notifications = await Notification.findAll({
+      where: { actor_id: userId },
       where: { recipient_id: userId },
       order: [["created_at", "DESC"]],
       limit: 50,
@@ -28,6 +29,8 @@ const getNotifications = async (req, res) => {
       id: n.id,
       type: n.type,
       actor_username: n.actor_username,
+      actor_id: n.actor_id,
+      recipient_id: n.recipient_id,
       message: n.message,
       post_id: n.post_id,
       is_read: n.is_read,
