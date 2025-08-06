@@ -457,6 +457,13 @@ const postsController = {
           }
         );
         await transaction.commit();
+
+        // Emit socket event for like update
+        getIO().emit("likeUpdated", {
+          post_id: postId,
+          action: "unlike",
+        });
+
         return res.json({
           success: true,
           message: "Post unliked successfully",
@@ -482,6 +489,12 @@ const postsController = {
         }
       );
       await transaction.commit();
+
+      // Emit socket event for like update
+      getIO().emit("likeUpdated", {
+        post_id: postId,
+        action: "like",
+      });
 
       // Create like notification for post owner using NotificationService
       await NotificationService.createLikeNotification({
@@ -525,22 +538,21 @@ const postsController = {
         SELECT 
           p.id,
           p.content,
+          p.user_id,
+          p.username,
           p.created_at,
           p.like_count,
           p.retweet_count,
           p.comment_count,
-          
+          p.media_urls,
           -- Engagement metrics
           (p.like_count + p.retweet_count + p.comment_count) as total_engagement,
-          
           -- Time-based analytics
           COUNT(DISTINCT ul.user_id) as unique_likers,
           COUNT(DISTINCT ur.user_id) as unique_retweeters,
-          
           -- Recent engagement (last 24 hours)
           COUNT(DISTINCT CASE WHEN ul.liked_at >= NOW() - INTERVAL '24 hours' THEN ul.user_id END) as recent_likes,
           COUNT(DISTINCT CASE WHEN ur.retweeted_at >= NOW() - INTERVAL '24 hours' THEN ur.user_id END) as recent_retweets,
-          
           -- Engagement rate calculation
           ROUND(
             ((p.like_count + p.retweet_count + p.comment_count) * 100.0) / 
@@ -549,12 +561,11 @@ const postsController = {
               WHERE following_id = p.user_id
             ), 1), 2
           ) as engagement_rate_percent
-          
         FROM posts p
         LEFT JOIN user_likes ul ON p.id = ul.post_id
         LEFT JOIN user_retweets ur ON p.id = ur.post_id
         WHERE p.id = :postId
-        GROUP BY p.id, p.content, p.created_at, p.like_count, p.retweet_count, p.comment_count, p.user_id
+        GROUP BY p.id, p.content, p.user_id, p.username, p.created_at, p.like_count, p.retweet_count, p.comment_count, p.media_urls
       `,
         {
           replacements: { postId },
@@ -569,10 +580,47 @@ const postsController = {
         });
       }
 
+      // Get displayName from MongoDB User collection
+      const User = require("../models/UserModels");
+      let displayName = null;
+      if (analytics.user_id) {
+        const userDoc = await User.findById(analytics.user_id).select(
+          "displayName"
+        );
+        displayName = userDoc ? userDoc.displayName : null;
+      }
+
+      // Get comments for the post
+      const Comment = require("../models/Comment");
+      const comments = await Comment.findAll({
+        where: { post_id: postId },
+        order: [["created_at", "DESC"]],
+      });
+
+      // Reorder analytics fields for response
+      const orderedAnalytics = {
+        id: analytics.id,
+        content: analytics.content,
+        user_id: analytics.user_id,
+        username: analytics.username,
+        displayName,
+        created_at: analytics.created_at,
+        like_count: analytics.like_count,
+        retweet_count: analytics.retweet_count,
+        comment_count: analytics.comment_count,
+        media_urls: analytics.media_urls,
+        total_engagement: analytics.total_engagement,
+        unique_likers: analytics.unique_likers,
+        unique_retweeters: analytics.unique_retweeters,
+        recent_likes: analytics.recent_likes,
+        recent_retweets: analytics.recent_retweets,
+        engagement_rate_percent: analytics.engagement_rate_percent,
+        comments,
+      };
       res.json({
         success: true,
         message: "Post analytics retrieved successfully",
-        analytics,
+        analytics: orderedAnalytics,
       });
     } catch (error) {
       console.error("Get post analytics error:", error);
@@ -617,6 +665,12 @@ const postsController = {
         // Remove retweet (unretweet)
         await existingRetweet.destroy({ transaction });
 
+        // Recalculate retweet count
+        const newCount = await UserRetweet.count({
+          where: { post_id: postId },
+          transaction,
+        });
+        await post.update({ retweet_count: newCount }, { transaction });
         // Decrement retweet count atomically
         await sequelize.query(
           "UPDATE posts SET retweet_count = GREATEST(retweet_count - 1, 0) WHERE id = :postId",
@@ -634,7 +688,7 @@ const postsController = {
         return res.json({
           success: true,
           message: "Post unretweeted successfully",
-          retweetCount: updatedPost.retweet_count,
+          retweetCount: newCount,
           isRetweeted: false,
         });
       } else {
@@ -649,6 +703,12 @@ const postsController = {
           { transaction }
         );
 
+        // Recalculate retweet count
+        const newCount = await UserRetweet.count({
+          where: { post_id: postId },
+          transaction,
+        });
+        await post.update({ retweet_count: newCount }, { transaction });
         // Increment retweet count atomically
         await sequelize.query(
           "UPDATE posts SET retweet_count = retweet_count + 1 WHERE id = :postId",
@@ -672,7 +732,7 @@ const postsController = {
         return res.json({
           success: true,
           message: "Post retweeted successfully",
-          retweetCount: updatedPost.retweet_count,
+          retweetCount: newCount,
           isRetweeted: true,
         });
       }

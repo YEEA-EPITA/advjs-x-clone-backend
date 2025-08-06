@@ -8,7 +8,6 @@ const generalsearch = async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
     const userCursor = req.query.userCursor || null;
     const postCursor = req.query.postCursor || null;
-
     let users = [];
     let posts = [];
     let nextUserCursor = null;

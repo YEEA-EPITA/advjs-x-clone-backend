@@ -233,10 +233,12 @@ Post.findLiveFeeds = async (userId, limit = 20, cursor = null) => {
       poll.id AS poll_id,
       poll.question AS poll_question,
       poll.expires_at AS poll_expires_at,
-      pv.option_id AS selected_option_id
+      pv.option_id AS selected_option_id,
+      pl.id IS NOT NULL AS liked_by_me
     FROM posts p
     LEFT JOIN polls poll ON poll.post_id = p.id
     LEFT JOIN poll_votes pv ON poll.id = pv.poll_id AND pv.user_id = :userId
+    LEFT JOIN user_likes pl ON pl.post_id = p.id AND pl.user_id = :userId
     WHERE ${whereClause}
     ORDER BY p.created_at DESC, p.id DESC
     LIMIT :limit

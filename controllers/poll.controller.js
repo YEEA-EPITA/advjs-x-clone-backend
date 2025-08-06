@@ -2,10 +2,12 @@ const { Poll, PollOption, PollVote } = require("../models");
 const { ErrorFactory } = require("../factories");
 const { ResponseFactory } = require("../factories/responseFactory");
 
+const { socketManager } = require("../utils");
+
 const votePoll = async (req, res) => {
   try {
     const jwtUser = req.user;
-    const { poll_id, option_id } = req.body;
+    const { poll_id, option_id, post_id } = req.body;
 
     const existingVote = await PollVote.findOne({
       where: { poll_id, user_id: jwtUser._id.toString() },
@@ -30,10 +32,18 @@ const votePoll = async (req, res) => {
       });
     });
 
+    // Emit the updated poll to the socket
+    socketManager.getIO().emit("pollUpdated", {
+      post_id,
+      poll_id,
+      option_id,
+    });
+
     return ResponseFactory.success({
       res,
       statusCode: 200,
       message: "Vote recorded successfully",
+      data: { post_id, poll_id, option_id },
     });
   } catch (err) {
     return ErrorFactory.internalServerError({

@@ -6,6 +6,25 @@ const { usersController } = require("../controllers");
 
 /**
  * @swagger
+ * /users/suggestions:
+ *   get:
+ *     summary: Get follow suggestions (users you don't already follow)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of suggested users
+ */
+
+router.get(
+  "/suggestions",
+  authMiddleware,
+  require("../controllers/users.controller").getFollowSuggestions
+);
+
+/**
+ * @swagger
  * /users/search:
  *   get:
  *     summary: Search users by username or displayName

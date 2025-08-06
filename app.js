@@ -85,9 +85,7 @@ const corsOptions = {
     }
 
     // In production, only allow specific origins
-    const allowedOrigins = process.env.CORS_ORIGIN
-      ? process.env.CORS_ORIGIN.split(",")
-      : ["http://localhost:3000", "http://localhost:3001"];
+    const allowedOrigins = process.env.CORS_ORIGIN.split(",");
 
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
@@ -100,7 +98,8 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
-app.use(cors(corsOptions));
+// app.use(cors(corsOptions));
+app.use(cors({ origin: "*" }));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -118,6 +117,7 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Routes - Authentication (MongoDB), Posts (PostgreSQL), and Users (MongoDB)
 const generalsearchRoutes = require("./routes/generalsearch.routes");
+
 app.use("/api/auth", authRoutes);
 app.use("/api/posts", postsRoutes);
 app.use("/api/users", usersRoutes);
@@ -160,5 +160,3 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-
-module.exports = app;
