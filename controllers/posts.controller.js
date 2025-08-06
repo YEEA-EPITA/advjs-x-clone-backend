@@ -496,6 +496,12 @@ const postsController = {
         action: "like",
       });
 
+      // Create like notification for post owner using NotificationService
+      await NotificationService.createLikeNotification({
+        post,
+        actor: req.user,
+      });
+
       res.json({
         success: true,
         message: "Post liked successfully",
@@ -517,7 +523,6 @@ const postsController = {
     try {
       const { postId } = req.params;
 
-      // Get analytics (now with user_id and username)
       // Block if post is soft deleted
       const post = await Post.findByPk(postId);
       if (!post || post.is_deleted) {
