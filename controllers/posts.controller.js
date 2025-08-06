@@ -74,6 +74,7 @@ const postsController = {
         },
       });
     } catch (error) {
+      console.error("Get live feeds error:", error);
       return ErrorFactory.internalServerError({
         res,
         message: "Failed to retrieve live feeds",
