@@ -1,5 +1,12 @@
 const User = require("../models/UserModels");
 const Post = require("../models/PostgreSQLPost");
+const {
+  UserFollow,
+  UserLike,
+  UserRetweet,
+  Poll,
+  PollOption,
+} = require("../models");
 
 // General search: search users and posts by keyword
 const generalsearch = async (req, res) => {
@@ -31,7 +38,7 @@ const generalsearch = async (req, res) => {
 
       // Posts: use created_at + id for cursor
       let postFilters = { is_public: true };
-      let postWhere = "p.is_public = true";
+      let postWhere = "p.is_public = true AND p.is_deleted = false";
       let postReplacements = {};
       if (postCursor) {
         // postCursor format: created_at|id
@@ -87,13 +94,101 @@ const generalsearch = async (req, res) => {
       }
     }
 
+    // Get current user ID for checking interactions
+    const currentUserId = req.user?._id?.toString() || null;
+
+    // Enhance users with follow status
+    let enhancedUsers = [];
+    if (users.length > 0 && currentUserId) {
+      // Get current user's following list from MongoDB
+      const currentUser = await User.findById(currentUserId).select(
+        "following"
+      );
+      const followingIds = new Set(
+        currentUser?.following?.map((id) => id.toString()) || []
+      );
+
+      enhancedUsers = users.map((user) => ({
+        ...user.toObject(),
+        isFollowing: followingIds.has(user._id.toString()),
+      }));
+    } else {
+      enhancedUsers = users.map((user) => ({
+        ...user.toObject(),
+        isFollowing: false,
+      }));
+    }
+
+    // Enhance posts with interaction status and polls
+    let enhancedPosts = [];
+    if (posts.length > 0) {
+      const postIds = posts.map((post) => post.id);
+
+      // Get like status
+      let likeRelations = [];
+      let retweetRelations = [];
+      if (currentUserId) {
+        likeRelations = await UserLike.findAll({
+          where: {
+            user_id: currentUserId,
+            post_id: postIds,
+          },
+        });
+
+        retweetRelations = await UserRetweet.findAll({
+          where: {
+            user_id: currentUserId,
+            post_id: postIds,
+          },
+        });
+      }
+
+      const likedPostIds = new Set(likeRelations.map((rel) => rel.post_id));
+      const retweetedPostIds = new Set(
+        retweetRelations.map((rel) => rel.post_id)
+      );
+
+      // Get polls for posts
+      const polls = await Poll.findAll({
+        where: { post_id: postIds },
+        include: [
+          {
+            model: PollOption,
+            as: "PollOptions",
+          },
+        ],
+      });
+
+      const pollsByPostId = {};
+      polls.forEach((poll) => {
+        pollsByPostId[poll.post_id] = {
+          id: poll.id,
+          question: poll.question,
+          expires_at: poll.expires_at,
+          created_at: poll.created_at,
+          options: poll.PollOptions.map((option) => ({
+            id: option.id,
+            option_text: option.option_text,
+            vote_count: option.vote_count || 0,
+          })),
+        };
+      });
+
+      enhancedPosts = posts.map((post) => ({
+        ...post,
+        isLiked: likedPostIds.has(post.id),
+        isRetweeted: retweetedPostIds.has(post.id),
+        poll: pollsByPostId[post.id] || null,
+      }));
+    }
+
     res.json({
       success: true,
       message: "General search completed successfully",
-      users,
-      posts,
-      usersCount: users.length,
-      postsCount: posts.length,
+      users: enhancedUsers,
+      posts: enhancedPosts,
+      usersCount: enhancedUsers.length,
+      postsCount: enhancedPosts.length,
       nextUserCursor,
       nextPostCursor,
     });
