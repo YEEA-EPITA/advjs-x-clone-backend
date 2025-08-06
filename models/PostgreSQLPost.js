@@ -87,6 +87,17 @@ const Post = sequelize.define(
       defaultValue: DataTypes.NOW,
       allowNull: false,
     },
+    is_deleted: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+      comment: "Soft delete flag",
+    },
+    deleted_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: "Soft delete timestamp",
+    },
   },
   {
     tableName: "posts",
@@ -147,25 +158,21 @@ Post.findUserFeed = async (userId, limit = 20, offset = 0) => {
     INNER JOIN user_network un ON p.user_id = un.user_id
     LEFT JOIN user_likes ul ON p.id = ul.post_id AND ul.user_id = :userId
     LEFT JOIN user_retweets ur ON p.id = ur.post_id AND ur.user_id = :userId
-    WHERE p.is_public = true
+    WHERE p.is_public = true AND p.is_deleted = false
     ORDER BY p.created_at DESC
+    LIMIT :limit OFFSET :offset
   `;
 
-  const replacements = { userId };
+  const replacements = { userId, limit, offset };
   const results = await sequelize.query(query, {
     replacements,
     type: sequelize.QueryTypes.SELECT,
   });
-  console.log(
-    "[Post.searchPosts] Results count:",
-    Array.isArray(results) ? results.length : results ? 1 : 0
-  );
-  console.log("[Post.searchPosts] Results:", results);
-  return results;
+  return Array.isArray(results) ? results : results != null ? [results] : [];
 };
 
 Post.searchPosts = async (searchTerm, filters = {}) => {
-  let whereClause = "p.is_public = true";
+  let whereClause = "p.is_public = true AND p.is_deleted = false";
   let replacements = {};
 
   if (searchTerm) {
@@ -209,7 +216,7 @@ Post.searchPosts = async (searchTerm, filters = {}) => {
 
 // Cursor-based pagination for live feeds
 Post.findLiveFeeds = async (userId, limit = 20, cursor = null) => {
-  let whereClause = "p.is_public = true";
+  let whereClause = "p.is_public = true AND p.is_deleted = false";
   const replacements = { userId };
 
   if (cursor) {
