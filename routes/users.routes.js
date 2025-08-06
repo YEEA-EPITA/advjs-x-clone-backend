@@ -53,6 +53,27 @@ router.get(
 
 /**
  * @swagger
+ * /users/suggestions:
+ *   get:
+ *     summary: Get user suggestions (users not followed by current user)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         required: false
+ *         description: Max number of suggestions (max 20)
+ *     responses:
+ *       200:
+ *         description: User suggestions retrieved successfully
+ */
+router.get("/suggestions", authMiddleware, usersController.getUserSuggestions);
+
+/**
+ * @swagger
  * /users/profile:
  *   put:
  *     summary: Update authenticated user's profile
