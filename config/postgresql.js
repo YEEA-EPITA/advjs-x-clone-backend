@@ -1,6 +1,9 @@
 const { Sequelize } = require("sequelize");
 
-// PostgreSQL connection configuration
+// Detect if we’re in production (Render) and SSL is required
+const isProduction = process.env.NODE_ENV === "production";
+const useSSL = !!process.env.POSTGRES_HOST?.includes("render.com");
+
 const sequelize = new Sequelize(
   process.env.POSTGRES_DATABASE || "twitter_clone_pg",
   process.env.POSTGRES_USER || "postgres",
@@ -10,6 +13,14 @@ const sequelize = new Sequelize(
     port: process.env.POSTGRES_PORT || 5432,
     dialect: "postgres",
     logging: false,
+    dialectOptions: useSSL
+      ? {
+          ssl: {
+            require: true,
+            rejectUnauthorized: false, // For Render
+          },
+        }
+      : {},
     pool: {
       max: 5,
       min: 0,
@@ -27,15 +38,12 @@ const sequelize = new Sequelize(
 
 const connectPostgreSQL = async () => {
   try {
-    // Wait a moment for PostgreSQL to be fully ready
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     await sequelize.authenticate();
     console.log("✅ Connected to PostgreSQL");
 
-    // Sync models (create tables if they don't exist)
     if (process.env.NODE_ENV === "development") {
-      // Use force: false to avoid constraint conflicts
       await sequelize.sync({ force: false });
       console.log("✅ PostgreSQL models synchronized");
     }
@@ -54,9 +62,11 @@ const connectPostgreSQL = async () => {
       console.error("💡 Database/Constraint Error - Check model definitions");
       console.error("💡 Consider: docker-compose down && docker-compose up -d");
     }
+
     throw error;
   }
 };
+
 module.exports = {
   sequelize,
   connectPostgreSQL,

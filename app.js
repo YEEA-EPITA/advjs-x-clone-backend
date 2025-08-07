@@ -99,15 +99,15 @@ const corsOptions = {
 };
 
 // app.use(cors(corsOptions));
-app.use(cors({ origin: "*" }));
+app.use(cors({ origin: "*", credentials: true }));
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-  message: "Too many requests from this IP, please try again later.",
-});
-app.use("/api/", limiter);
+// const limiter = rateLimit({
+//   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+//   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+//   message: "Too many requests from this IP, please try again later.",
+// });
+// app.use("/api/", limiter);
 
 // General middleware
 app.use(compression());

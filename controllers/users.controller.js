@@ -162,6 +162,15 @@ const followUser = async (req, res) => {
       $push: { following: userId },
     });
 
+    // Create follow notification using NotificationService
+    const NotificationService = require("./NotificationService");
+    const actorUser = await User.findById(currentUserId).select("_id username");
+    const followedUser = await User.findById(userId).select("_id username");
+    await NotificationService.createFollowNotification({
+      followedUser,
+      actor: actorUser,
+    });
+
     res.status(200).json({
       success: true,
       message: "User followed successfully",
@@ -285,6 +294,41 @@ const getFollowing = async (req, res) => {
   }
 };
 
+/**
+ * Get user suggestions (users not followed by current user)
+ */
+const getUserSuggestions = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 20);
+
+    // Get users that the current user is not following
+    const currentUser = await User.findById(userId).populate("following");
+    const followingIds = currentUser.following.map((user) => user._id);
+    followingIds.push(userId); // Exclude current user
+
+    const suggestions = await User.find({
+      _id: { $nin: followingIds },
+    })
+      .select("username displayName profilePicture bio followerCount")
+      .sort({ followerCount: -1, createdAt: -1 })
+      .limit(limit);
+
+    res.status(200).json({
+      success: true,
+      message: "User suggestions retrieved successfully",
+      suggestions: suggestions.map((user) => formatUserResponse(user)),
+      count: suggestions.length,
+    });
+  } catch (error) {
+    console.error("Get user suggestions error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to get user suggestions",
+    });
+  }
+};
+
 module.exports = {
   updateProfile,
   getUserProfile,
@@ -292,5 +336,6 @@ module.exports = {
   unfollowUser,
   getFollowers,
   getFollowing,
-  getFollowSuggestions,
+  getUserSuggestions,
+  getFollowSuggestions
 };
