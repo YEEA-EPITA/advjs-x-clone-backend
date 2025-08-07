@@ -34,6 +34,12 @@ const postsController = {
       post.deleted_at = new Date();
       await post.save();
 
+      // Emit socket event to notify clients
+      getIO().emit("postDeleted", {
+        postId: post.id,
+        userId,
+      });
+
       return ResponseFactory.success({
         res,
         message: "Post deleted successfully",
@@ -427,7 +433,7 @@ const postsController = {
       const { postId } = req.params;
       const userId = req.user._id.toString();
 
-      // Block if post is soft deleted
+      // Check post validity
       const post = await Post.findByPk(postId);
       if (!post || post.is_deleted) {
         await transaction.rollback();
@@ -443,12 +449,14 @@ const postsController = {
         transaction,
       });
 
+      let action = "";
       if (existingLike) {
-        // Unlike: remove like record and decrement like_count
+        // Unlike
         await UserLike.destroy({
           where: { user_id: userId, post_id: postId },
           transaction,
         });
+
         await sequelize.query(
           "UPDATE posts SET like_count = like_count - 1 WHERE id = :postId AND like_count > 0",
           {
@@ -457,64 +465,72 @@ const postsController = {
             transaction,
           }
         );
-        await transaction.commit();
 
-        // Emit socket event for like update
-        getIO().emit("likeUpdated", {
-          post_id: postId,
-          action: "unlike",
-        });
+        action = "unlike";
+      } else {
+        // Like
+        await UserLike.create(
+          {
+            user_id: userId,
+            post_id: postId,
+            username: req.user.username,
+          },
+          { transaction }
+        );
 
-        return res.json({
-          success: true,
-          message: "Post unliked successfully",
-          post_id: postId,
+        await sequelize.query(
+          "UPDATE posts SET like_count = like_count + 1 WHERE id = :postId",
+          {
+            replacements: { postId },
+            type: sequelize.QueryTypes.UPDATE,
+            transaction,
+          }
+        );
+
+        action = "like";
+      }
+
+      await transaction.commit();
+
+      // Get updated like count
+      const updatedPost = await Post.findByPk(postId);
+
+      // Emit socket event for all clients
+      getIO().emit("likeUpdated", {
+        post_id: postId,
+        action,
+        like_count: updatedPost.like_count,
+        userId,
+      });
+
+      // Send notification if it's a like
+      if (action === "like") {
+        await NotificationService.createLikeNotification({
+          post,
+          actor: req.user,
         });
       }
 
-      // Like: create like record and increment like_count
-      await UserLike.create(
-        {
-          user_id: userId,
+      // Final response
+      return ResponseFactory.success({
+        res,
+        message:
+          action === "like"
+            ? "Post liked successfully"
+            : "Post unliked successfully",
+        data: {
           post_id: postId,
-          username: req.user.username,
+          userId,
+          isLiked: action === "like",
+          likeCount: updatedPost.like_count,
         },
-        { transaction }
-      );
-      await sequelize.query(
-        "UPDATE posts SET like_count = like_count + 1 WHERE id = :postId",
-        {
-          replacements: { postId },
-          type: sequelize.QueryTypes.UPDATE,
-          transaction,
-        }
-      );
-      await transaction.commit();
-
-      // Emit socket event for like update
-      getIO().emit("likeUpdated", {
-        post_id: postId,
-        action: "like",
-      });
-
-      // Create like notification for post owner using NotificationService
-      await NotificationService.createLikeNotification({
-        post,
-        actor: req.user,
-      });
-
-      res.json({
-        success: true,
-        message: "Post liked successfully",
-        post_id: postId,
       });
     } catch (error) {
       await transaction.rollback();
-      console.error("Like post error:", error);
-      res.status(500).json({
-        success: false,
-        error: "Failed to like/unlike post",
-        message: error.message,
+      return ErrorFactory.internalServerError({
+        res,
+        message: "Failed to like/unlike post",
+        error: error.message,
       });
     }
   },
