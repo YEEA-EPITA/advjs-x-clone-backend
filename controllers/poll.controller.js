@@ -13,15 +13,20 @@ const votePoll = async (req, res) => {
       where: { poll_id, user_id: jwtUser._id.toString() },
     });
 
-    if (existingVote)
+    if (existingVote) {
       return ErrorFactory.forbidden({
         res,
         message: "You have already voted in this poll.",
       });
+    }
 
     await Poll.sequelize.transaction(async (t) => {
       await PollVote.create(
-        { poll_id, user_id: jwtUser._id.toString(), option_id },
+        {
+          poll_id,
+          user_id: jwtUser._id.toString(),
+          option_id,
+        },
         { transaction: t }
       );
 
@@ -32,18 +37,51 @@ const votePoll = async (req, res) => {
       });
     });
 
-    // Emit the updated poll to the socket
-    socketManager.getIO().emit("pollUpdated", {
-      post_id,
-      poll_id,
-      option_id,
+    // Get updated poll data
+    const updatedPoll = await Poll.findByPk(poll_id, {
+      include: [
+        {
+          model: PollOption,
+          as: "PollOptions", // ✅ Match your association
+          attributes: ["id", "option_text", "vote_count"],
+        },
+      ],
     });
 
+    const userSpecificPoll = {
+      id: updatedPoll.id,
+      question: updatedPoll.question,
+      expires_at: updatedPoll.expires_at,
+      options: updatedPoll.PollOptions,
+      voted: true,
+      selected_option_id: option_id,
+    };
+
+    // For others (emit via socket)
+    const globalPoll = {
+      id: updatedPoll.id,
+      question: updatedPoll.question,
+      expires_at: updatedPoll.expires_at,
+      options: updatedPoll.PollOptions,
+      voted: false,
+      selected_option_id: null,
+    };
+
+    // Emit to all other users (not the voter)
+    socketManager.getIO().emit("pollUpdated", {
+      post_id,
+      poll: globalPoll,
+    });
+
+    // Return only to the voting user
     return ResponseFactory.success({
       res,
       statusCode: 200,
       message: "Vote recorded successfully",
-      data: { post_id, poll_id, option_id },
+      data: {
+        post_id,
+        poll: userSpecificPoll,
+      },
     });
   } catch (err) {
     return ErrorFactory.internalServerError({
