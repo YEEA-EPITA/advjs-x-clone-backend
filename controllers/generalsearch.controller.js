@@ -13,67 +13,55 @@ const generalsearch = async (req, res) => {
   try {
     const q = req.query.q || req.query.searchTerm || "";
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
-    const userCursor = req.query.userCursor || null;
-    const postCursor = req.query.postCursor || null;
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
     let users = [];
     let posts = [];
-    let nextUserCursor = null;
-    let nextPostCursor = null;
+    let usersCount = 0;
+    let postsCount = 0;
 
     if (!q.trim()) {
-      // No search query: return all users and posts with cursor-based pagination
-      // Users: use _id for cursor
-      const userQuery = {};
-      if (userCursor) {
-        userQuery._id = { $gt: userCursor };
-      }
-      users = await User.find(userQuery)
+      // No search query: return all users and posts with offset pagination
+      usersCount = await User.countDocuments();
+      users = await User.find({})
         .select("_id username displayName profilePicture bio")
         .sort({ _id: 1 })
-        .limit(limit + 1);
-      if (users.length > limit) {
-        nextUserCursor = users[limit]._id;
-        users = users.slice(0, limit);
-      }
+        .skip((page - 1) * limit)
+        .limit(limit);
 
-      // Posts: use created_at + id for cursor
-      let postFilters = { is_public: true };
-      let postWhere = "p.is_public = true AND p.is_deleted = false";
-      let postReplacements = {};
-      if (postCursor) {
-        // postCursor format: created_at|id
-        const [createdAt, id] = postCursor.split("|");
-        postWhere +=
-          " AND (p.created_at < :createdAt OR (p.created_at = :createdAt AND p.id < :id))";
-        postReplacements.createdAt = createdAt;
-        postReplacements.id = id;
-      }
+      postsCount = await Post.sequelize.query(
+        "SELECT COUNT(*) as count FROM posts p WHERE p.is_public = true AND p.is_deleted = false",
+        { type: Post.sequelize.QueryTypes.SELECT }
+      );
+      postsCount = postsCount[0]?.count ? parseInt(postsCount[0].count) : 0;
+
       const postQuery = `
         SELECT p.* FROM posts p
-        WHERE ${postWhere}
+        WHERE p.is_public = true AND p.is_deleted = false
         ORDER BY p.created_at DESC, p.id DESC
-        LIMIT :limit
+        LIMIT :limit OFFSET :offset
       `;
-      postReplacements.limit = limit + 1;
       const postResults = await Post.sequelize.query(postQuery, {
-        replacements: postReplacements,
+        replacements: { limit, offset: (page - 1) * limit },
         type: Post.sequelize.QueryTypes.SELECT,
       });
       posts = postResults;
-      if (posts.length > limit) {
-        const last = posts[limit];
-        nextPostCursor = `${last.created_at.toISOString()}|${last.id}`;
-        posts = posts.slice(0, limit);
-      }
     } else {
       // Search users (fuzzy)
       let usersRaw = [];
       try {
+        usersCount = await User.countDocuments({ $text: { $search: q } });
         usersRaw = await User.find({ $text: { $search: q } })
           .select("_id username displayName profilePicture bio score")
-          .limit(limit)
-          .sort({ score: { $meta: "textScore" } });
+          .sort({ score: { $meta: "textScore" }, _id: 1 })
+          .skip((page - 1) * limit)
+          .limit(limit);
       } catch (err) {
+        usersCount = await User.countDocuments({
+          $or: [
+            { username: { $regex: q, $options: "i" } },
+            { displayName: { $regex: q, $options: "i" } },
+          ],
+        });
         usersRaw = await User.find({
           $or: [
             { username: { $regex: q, $options: "i" } },
@@ -81,6 +69,7 @@ const generalsearch = async (req, res) => {
           ],
         })
           .select("_id username displayName profilePicture bio")
+          .skip((page - 1) * limit)
           .limit(limit);
       }
       users = Array.isArray(usersRaw) ? usersRaw : usersRaw ? [usersRaw] : [];
@@ -88,9 +77,15 @@ const generalsearch = async (req, res) => {
 
       // Search posts (content and username)
       try {
-        posts = await Post.searchPosts(q, { limit });
+        // You may want to implement offset pagination for posts search as well
+        posts = await Post.searchPosts(q, {
+          limit,
+          offset: (page - 1) * limit,
+        });
+        postsCount = posts.length;
       } catch (err) {
         posts = [];
+        postsCount = 0;
       }
     }
 
@@ -187,10 +182,10 @@ const generalsearch = async (req, res) => {
       message: "General search completed successfully",
       users: enhancedUsers,
       posts: enhancedPosts,
-      usersCount: enhancedUsers.length,
-      postsCount: enhancedPosts.length,
-      nextUserCursor,
-      nextPostCursor,
+      usersCount,
+      postsCount,
+      page,
+      limit,
     });
   } catch (error) {
     console.error("General search error:", error);
