@@ -1,6 +1,7 @@
 const { DataTypes } = require("sequelize");
 const { sequelize } = require("../config/postgresql");
 const { PollOption } = require("./PollsModels");
+const { UserRetweet } = require("./PostgreSQLModels");
 
 // Post model for PostgreSQL - handles structured data and complex queries
 const Post = sequelize.define(
@@ -204,8 +205,6 @@ Post.searchPosts = async (searchTerm, filters = {}) => {
     LIMIT ${filters.limit || 50}
   `;
 
-  // ...existing code...
-
   const results = await sequelize.query(query, {
     replacements,
     type: sequelize.QueryTypes.SELECT,
@@ -227,88 +226,74 @@ Post.findLiveFeeds = async (userId, limit = 20, cursor = null) => {
     replacements.id = id;
   }
 
-  const query = `
-    SELECT 
-      p.*,
-      poll.id AS poll_id,
-      poll.question AS poll_question,
-      poll.expires_at AS poll_expires_at,
-      pv.option_id AS selected_option_id,
-      pl.id IS NOT NULL AS liked_by_me
-    FROM posts p
-    LEFT JOIN polls poll ON poll.post_id = p.id
-    LEFT JOIN poll_votes pv ON poll.id = pv.poll_id AND pv.user_id = :userId
-    LEFT JOIN user_likes pl ON pl.post_id = p.id AND pl.user_id = :userId
+  // Fetch posts
+  const postQuery = `
+    SELECT p.* FROM posts p
     WHERE ${whereClause}
     ORDER BY p.created_at DESC, p.id DESC
     LIMIT :limit
   `;
   replacements.limit = limit;
-
-  const results = await sequelize.query(query, {
+  const posts = await sequelize.query(postQuery, {
     replacements,
     type: sequelize.QueryTypes.SELECT,
   });
 
-  // Step 1: Extract poll_ids for batch-fetching options
-  const pollIds = results.filter((r) => r.poll_id).map((r) => r.poll_id);
-
-  let optionsMap = {};
-  if (pollIds.length > 0) {
-    const options = await PollOption.findAll({
-      where: { poll_id: pollIds },
-      attributes: ["id", "poll_id", "option_text", "vote_count"],
+  // Fetch retweets for these posts
+  let retweets = [];
+  if (posts.length > 0) {
+    const postIds = posts.map((post) => post.id);
+    retweets = await UserRetweet.findAll({
+      where: { post_id: postIds },
       raw: true,
     });
-
-    // Group options by poll_id
-    optionsMap = options.reduce((acc, opt) => {
-      if (!acc[opt.poll_id]) acc[opt.poll_id] = [];
-      acc[opt.poll_id].push({
-        id: opt.id,
-        option_text: opt.option_text,
-        vote_count: opt.vote_count,
-      });
-      return acc;
-    }, {});
   }
 
-  const feeds = results.map((post) => {
-    const formattedPost = {
-      ...post,
+  // Build retweet feed items
+  const retweetFeedItems = retweets.map((rt) => {
+    // Find the original post for this retweet
+    const originalPost = posts.find((p) => p.id === rt.post_id);
+    return {
+      type: "retweet",
+      retweetId: rt.id,
+      retweeterId: rt.user_id,
+      retweeterUsername: rt.username,
+      retweetComment: rt.comment,
+      retweetedAt: rt.retweeted_at,
+      originalPost,
     };
-
-    // attach poll if exists
-    if (post.poll_id) {
-      formattedPost.poll = {
-        id: post.poll_id,
-        question: post.poll_question,
-        expires_at: post.poll_expires_at,
-        options: optionsMap[post.poll_id] || [],
-        voted: !!post.selected_option_id,
-        selected_option_id: post.selected_option_id || null,
-      };
-    }
-
-    // Cleanup
-    delete formattedPost.poll_id;
-    delete formattedPost.poll_question;
-    delete formattedPost.poll_expires_at;
-    delete formattedPost.selected_option_id;
-
-    return formattedPost;
   });
 
+  // Build normal post feed items
+  const postFeedItems = posts.map((post) => ({
+    type: "post",
+    ...post,
+  }));
+
+  // Combine and sort by createdAt/retweetedAt descending
+  const combinedFeed = [...postFeedItems, ...retweetFeedItems].sort((a, b) => {
+    const aTime =
+      a.type === "retweet" ? new Date(a.retweetedAt) : new Date(a.created_at);
+    const bTime =
+      b.type === "retweet" ? new Date(b.retweetedAt) : new Date(b.created_at);
+    return bTime - aTime;
+  });
+
+  // Pagination logic (cursor for combined feed)
   let nextCursor = null;
   let hasMore = false;
-  if (feeds.length === limit) {
-    const last = feeds[feeds.length - 1];
-    nextCursor = `${last.created_at.toISOString()}|${last.id}`;
+  if (combinedFeed.length === limit) {
+    const last = combinedFeed[combinedFeed.length - 1];
+    const lastTime =
+      last.type === "retweet" ? last.retweetedAt : last.created_at;
+    nextCursor = `${new Date(lastTime).toISOString()}|${
+      last.type === "retweet" ? last.retweetId : last.id
+    }`;
     hasMore = true;
   }
 
   return {
-    feeds,
+    feeds: combinedFeed.slice(0, limit),
     nextCursor,
     hasMore,
   };
