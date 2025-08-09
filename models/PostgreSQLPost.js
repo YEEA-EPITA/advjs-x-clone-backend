@@ -142,14 +142,13 @@ Post.findTrendingHashtags = async (limit = 10, timeframe = 24) => {
 };
 
 Post.findUserFeed = async (userId, limit = 20, offset = 0) => {
-  // Complex query joining user relationships and posts
   const query = `
     WITH user_network AS (
       SELECT DISTINCT following_id as user_id 
       FROM user_follows 
       WHERE follower_id = :userId
       UNION
-      SELECT :userId as user_id -- Include own posts
+      SELECT :userId as user_id
     )
     SELECT 
       p.*,
@@ -213,46 +212,33 @@ Post.searchPosts = async (searchTerm, filters = {}) => {
   return results;
 };
 
-// Cursor-based pagination for live feeds
-Post.findLiveFeeds = async (userId, limit = 20, cursor = null) => {
+// Offset-based pagination for live feeds
+Post.findLiveFeeds = async (userId, limit = 20, page = 1) => {
   let whereClause = "p.is_public = true AND p.is_deleted = false";
-  const replacements = { userId };
+  page = Math.max(parseInt(page) || 1, 1);
+  limit = Math.min(parseInt(limit) || 20, 100);
+  const offset = (page - 1) * limit;
 
-  if (cursor) {
-    const [createdAt, id] = cursor.split("|");
-    whereClause +=
-      " AND (p.created_at < :createdAt OR (p.created_at = :createdAt AND p.id < :id))";
-    replacements.createdAt = createdAt;
-    replacements.id = id;
-  }
+  const countResult = await sequelize.query(
+    `SELECT COUNT(*) as count FROM posts p WHERE ${whereClause}`,
+    { type: sequelize.QueryTypes.SELECT }
+  );
+  const totalCount = countResult[0]?.count ? parseInt(countResult[0].count) : 0;
 
-  // Fetch posts
   const postQuery = `
     SELECT p.* FROM posts p
     WHERE ${whereClause}
     ORDER BY p.created_at DESC, p.id DESC
-    LIMIT :limit
   `;
-  replacements.limit = limit;
   const posts = await sequelize.query(postQuery, {
-    replacements,
     type: sequelize.QueryTypes.SELECT,
   });
 
-  // Fetch retweets for these posts
-  let retweets = [];
-  if (posts.length > 0) {
-    const postIds = posts.map((post) => post.id);
-    retweets = await UserRetweet.findAll({
-      where: { post_id: postIds },
-      raw: true,
-    });
-  }
+  let retweets = await UserRetweet.findAll({ raw: true });
+  let postsForFeed = posts;
 
-  // Build retweet feed items
   const retweetFeedItems = retweets.map((rt) => {
-    // Find the original post for this retweet
-    const originalPost = posts.find((p) => p.id === rt.post_id);
+    const originalPost = postsForFeed.find((p) => p.id === rt.post_id);
     return {
       type: "retweet",
       retweetId: rt.id,
@@ -264,14 +250,12 @@ Post.findLiveFeeds = async (userId, limit = 20, cursor = null) => {
     };
   });
 
-  // Build normal post feed items
-  const postFeedItems = posts.map((post) => ({
+  const postFeedItems = postsForFeed.map((post) => ({
     type: "post",
     ...post,
   }));
 
-  // Combine and sort by createdAt/retweetedAt descending
-  const combinedFeed = [...postFeedItems, ...retweetFeedItems].sort((a, b) => {
+  let combinedFeed = [...postFeedItems, ...retweetFeedItems].sort((a, b) => {
     const aTime =
       a.type === "retweet" ? new Date(a.retweetedAt) : new Date(a.created_at);
     const bTime =
@@ -279,23 +263,13 @@ Post.findLiveFeeds = async (userId, limit = 20, cursor = null) => {
     return bTime - aTime;
   });
 
-  // Pagination logic (cursor for combined feed)
-  let nextCursor = null;
-  let hasMore = false;
-  if (combinedFeed.length === limit) {
-    const last = combinedFeed[combinedFeed.length - 1];
-    const lastTime =
-      last.type === "retweet" ? last.retweetedAt : last.created_at;
-    nextCursor = `${new Date(lastTime).toISOString()}|${
-      last.type === "retweet" ? last.retweetId : last.id
-    }`;
-    hasMore = true;
-  }
+  const pagedFeed = combinedFeed.slice(offset, offset + limit);
 
   return {
-    feeds: combinedFeed.slice(0, limit),
-    nextCursor,
-    hasMore,
+    feeds: pagedFeed,
+    page,
+    limit,
+    totalCount: combinedFeed.length,
   };
 };
 
