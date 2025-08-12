@@ -301,24 +301,57 @@ const getUserSuggestions = async (req, res) => {
   try {
     const userId = req.user._id;
     const limit = Math.min(parseInt(req.query.limit) || 10, 20);
+    const cursor = req.query.cursor;
 
     // Get users that the current user is not following
     const currentUser = await User.findById(userId).populate("following");
     const followingIds = currentUser.following.map((user) => user._id);
     followingIds.push(userId); // Exclude current user
 
+    // Build cursor filter
+    let cursorFilter = {};
+    if (cursor) {
+      const [createdAt, lastId] = cursor.split("|");
+      cursorFilter = {
+        $or: [
+          { createdAt: { $lt: new Date(createdAt) } },
+          { createdAt: new Date(createdAt), _id: { $lt: lastId } },
+        ],
+      };
+    }
+
+    // Fetch limit + 1 for pagination
     const suggestions = await User.find({
       _id: { $nin: followingIds },
+      ...cursorFilter,
     })
-      .select("username displayName profilePicture bio followerCount")
-      .sort({ followerCount: -1, createdAt: -1 })
-      .limit(limit);
+      .select("username displayName profilePicture bio followerCount createdAt")
+      .sort({ followerCount: -1, createdAt: -1, _id: -1 })
+      .limit(limit + 1);
+
+    let nextCursor = null;
+    let hasMore = false;
+    let pagedSuggestions = suggestions;
+    if (suggestions.length > limit) {
+      pagedSuggestions = suggestions.slice(0, limit);
+      const last = pagedSuggestions[pagedSuggestions.length - 1];
+      nextCursor = `${last.createdAt.toISOString()}|${last._id}`;
+      hasMore = true;
+    }
 
     res.status(200).json({
       success: true,
+      statusCode: 200,
       message: "User suggestions retrieved successfully",
-      suggestions: suggestions.map((user) => formatUserResponse(user)),
-      count: suggestions.length,
+      timestamp: new Date().toISOString(),
+      body: {
+        suggestions: pagedSuggestions.map((user) => formatUserResponse(user)),
+        pagination: {
+          limit,
+          nextCursor,
+          hasMore,
+        },
+      },
     });
   } catch (error) {
     console.error("Get user suggestions error:", error);
@@ -337,5 +370,5 @@ module.exports = {
   getFollowers,
   getFollowing,
   getUserSuggestions,
-  getFollowSuggestions
+  getFollowSuggestions,
 };
