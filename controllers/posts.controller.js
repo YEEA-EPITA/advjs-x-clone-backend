@@ -56,16 +56,19 @@ const postsController = {
   // Get all public posts as live feeds with cursor-based pagination
   getLiveFeeds: async (req, res) => {
     try {
-      const limit = Math.min(parseInt(req.query.limit) || 20, 100);
-      const cursor = req.query.cursor || null;
+      let page = Number(req.query.page);
+      page = Number.isInteger(page) && page > 0 ? page : 1;
+      let limit = Number(req.query.limit);
+      limit = Number.isInteger(limit) && limit > 0 && limit <= 100 ? limit : 20;
 
       // Fetch live feeds from model
       const userId = req.user?._id?.toString() || null;
-      const { feeds, nextCursor, hasMore } = await Post.findLiveFeeds(
-        userId,
-        limit,
-        cursor
-      );
+      const {
+        feeds,
+        page: returnedPage,
+        limit: returnedLimit,
+        totalCount,
+      } = await Post.findLiveFeeds(userId, limit, page);
 
       return ResponseFactory.success({
         res,
@@ -73,9 +76,9 @@ const postsController = {
         data: {
           feeds,
           pagination: {
-            limit,
-            nextCursor,
-            hasMore,
+            page: returnedPage,
+            limit: returnedLimit,
+            totalCount,
           },
         },
       });
@@ -198,148 +201,199 @@ const postsController = {
   },
   // Create a new post
   createPost: async (req, res) => {
-    const transaction = await sequelize.transaction();
+    const user = req.user;
+    const { content, location } = req.body;
 
+    // 1) Parse poll safely
+    let pollPayload = null;
+    if (req.body.poll) {
+      try {
+        pollPayload =
+          typeof req.body.poll === "string"
+            ? JSON.parse(req.body.poll)
+            : req.body.poll;
+      } catch (e) {
+        return res
+          .status(400)
+          .json({ success: false, error: "Poll must be valid JSON" });
+      }
+    }
+
+    // Quick validation helper
+    const isValidPoll =
+      pollPayload &&
+      typeof pollPayload.question === "string" &&
+      pollPayload.question.trim().length > 0 &&
+      Array.isArray(pollPayload.options) &&
+      pollPayload.options.length >= 2;
+
+    // 2) Extract tags
+    const hashtags = content?.match(/#\w+/g)?.map((t) => t.slice(1)) || [];
+    const mentions = content?.match(/@\w+/g)?.map((m) => m.slice(1)) || [];
+
+    // 3) Upload media (outside tx)
+    const media_urls = [];
     try {
-      const file = req.file;
-      const jwtUser = req.user;
-      const { content, location } = req.body;
-      let poll = null;
-
-      if (req.body.poll) {
-        try {
-          poll = JSON.parse(req.body.poll);
-        } catch (err) {
-          await transaction.rollback();
-          return res.status(400).json({
-            success: false,
-            error: "Poll must be a valid JSON object",
-          });
-        }
-      }
-
-      const hashtags =
-        content?.match(/#\w+/g)?.map((tag) => tag.substring(1)) || [];
-      const mentions =
-        content?.match(/@\w+/g)?.map((mention) => mention.substring(1)) || [];
-
-      // Create mention notifications for each mentioned user using NotificationService
-      await NotificationService.createMentionNotifications({
-        mentionedUsernames: mentions,
-        actor: jwtUser,
-      });
-
-      const mediaUrls = [];
-
-      if (file) {
+      if (req.file) {
         const url = await uploadToS3(
-          file.buffer,
-          file.originalname,
-          file.mimetype
+          req.file.buffer,
+          req.file.originalname,
+          req.file.mimetype
         );
-        mediaUrls.push(url);
+        media_urls.push(url);
       }
-
-      if ((!content || content.trim() === "") && mediaUrls.length === 0) {
-        await transaction.rollback();
-        return res.status(400).json({
-          success: false,
-          error: "Post content or media is required",
-        });
-      }
-
-      const post = await Post.create(
-        {
-          user_id: jwtUser._id.toString(),
-          username: jwtUser.username,
-          content: content?.trim(),
-          media_urls: mediaUrls,
-          hashtags,
-          mentions,
-          location,
-        },
-        { transaction }
-      );
-
-      let createdPoll = null;
-      if (
-        poll &&
-        poll.question &&
-        Array.isArray(poll.options) &&
-        poll.options.length >= 2
-      ) {
-        createdPoll = await Poll.create(
-          {
-            post_id: post.id,
-            user_id: jwtUser._id.toString(),
-            question: poll.question,
-            expires_at: poll.expires_at || null,
-          },
-          { transaction }
-        );
-
-        const pollOptions = poll.options.map((text) => ({
-          poll_id: createdPoll.id,
-          option_text: text,
-        }));
-
-        await PollOption.bulkCreate(pollOptions, { transaction });
-      }
-
-      await transaction.commit();
-
-      let pollData = null;
-      if (createdPoll) {
-        const pollOptions = await PollOption.findAll({
-          where: { poll_id: createdPoll.id },
-          attributes: ["id", "option_text"],
-        });
-
-        pollData = {
-          id: createdPoll.id,
-          question: createdPoll.question,
-          expires_at: createdPoll.expires_at,
-          options: pollOptions,
-        };
-      }
-
-      getIO().emit("new_feed", {
-        id: post.id,
-        content: post.content,
-        username: post.username,
-        createdAt: post.created_at,
-        mediaUrls: post.media_urls,
-        poll: createdPoll
-          ? {
-              id: createdPoll.id,
-              question: createdPoll.question,
-              options: poll.options,
-            }
-          : null,
-      });
-
-      res.status(201).json({
-        success: true,
-        message: "Post created successfully",
-        post: {
-          id: post.id,
-          content: post.content,
-          hashtags: post.hashtags,
-          mentions: post.mentions,
-          mediaUrls: post.media_urls,
-          location: post.location,
-          createdAt: post.created_at,
-          poll: pollData,
-        },
-      });
-    } catch (error) {
-      await transaction.rollback();
-      res.status(500).json({
+    } catch (e) {
+      return res.status(500).json({
         success: false,
-        error: "Failed to create post",
-        message: error.message,
+        error: "Media upload failed",
+        message: e.message,
       });
     }
+
+    if ((!content || !content.trim()) && media_urls.length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Post content or media is required" });
+    }
+
+    if (mentions.length) {
+      NotificationService.createMentionNotifications({
+        mentionedUsernames: mentions,
+        actor: user,
+      }).catch((err) => console.warn("Mention notify failed:", err.message));
+    }
+
+    // 4) DB writes (managed transaction)
+    let post,
+      pollId = null,
+      pollMeta = null;
+
+    try {
+      ({ post, pollId, pollMeta } = await sequelize.transaction(async (t) => {
+        const newPost = await Post.create(
+          {
+            user_id: user._id.toString(),
+            username: user.username,
+            content: content?.trim() || null,
+            media_urls,
+            hashtags,
+            mentions,
+            location,
+            like_count: 0,
+            retweet_count: 0,
+            comment_count: 0,
+            is_public: true,
+          },
+          { transaction: t }
+        );
+
+        let createdPollId = null;
+        let createdPollMeta = null;
+
+        if (isValidPoll) {
+          const p = await Poll.create(
+            {
+              post_id: newPost.id,
+              user_id: user._id.toString(),
+              question: pollPayload.question.trim(),
+              expires_at: pollPayload.expires_at || null,
+            },
+            { transaction: t }
+          );
+
+          const rows = pollPayload.options.map((text) => ({
+            poll_id: p.id,
+            option_text: String(text),
+          }));
+          await PollOption.bulkCreate(rows, { transaction: t });
+
+          createdPollId = p.id;
+          createdPollMeta = {
+            question: p.question,
+            expires_at: p.expires_at || null,
+          };
+        }
+
+        return {
+          post: newPost,
+          pollId: createdPollId,
+          pollMeta: createdPollMeta,
+        };
+      }));
+    } catch (e) {
+      return res.status(500).json({
+        success: false,
+        error: "Failed to create post",
+        message: e.message,
+      });
+    }
+
+    // 5) Post-commit: build poll (use safe order by id)
+    let poll = null;
+    if (pollId) {
+      try {
+        const options = await PollOption.findAll({
+          where: { poll_id: pollId },
+          attributes: ["id", "option_text"],
+          order: [["id", "ASC"]], // <-- safer than created_at
+        });
+        poll = {
+          id: pollId,
+          question: pollMeta.question,
+          expires_at: pollMeta.expires_at,
+          options: options.map((o) => ({
+            id: o.id,
+            option_text: o.option_text,
+            vote_count: 0,
+          })),
+          voted: false,
+          selected_option_id: null,
+        };
+      } catch (e) {
+        console.warn("Poll options fetch failed:", e.message);
+        // leave poll = null
+      }
+    } else {
+      // Optional debug to confirm validation path
+      console.warn(
+        "No poll created. Received pollPayload:",
+        JSON.stringify(pollPayload)
+      );
+    }
+
+    const responsePost = {
+      id: post.id,
+      user_id: post.user_id,
+      username: post.username,
+      content: post.content,
+      content_type: post.media_urls?.length ? "media" : "text",
+      media_urls: post.media_urls || [],
+      hashtags: post.hashtags || [],
+      mentions: post.mentions || [],
+      like_count: post.like_count ?? 0,
+      retweet_count: post.retweet_count ?? 0,
+      comment_count: post.comment_count ?? 0,
+      is_public: post.is_public ?? true,
+      location: post.location || "Unknown",
+      created_at: post.created_at,
+      updated_at: post.updated_at || post.created_at,
+      is_deleted: !!post.is_deleted,
+      deleted_at: post.deleted_at || null,
+      liked_by_me: false,
+      poll,
+    };
+
+    try {
+      getIO().emit("new_feed", responsePost);
+    } catch {
+      /* ignore */
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Post created successfully",
+      post: responsePost,
+    });
   },
 
   // Get user's personalized feed using complex SQL queries
