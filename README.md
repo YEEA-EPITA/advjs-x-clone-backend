@@ -54,46 +54,67 @@ A comprehensive Twitter clone backend with authentication, posts, user profiles,
 
 ## API Endpoints (21 Total)
 
-### 🔐 Authentication (7 endpoints)
+### 🔐 Authentication
 
-| Method | Endpoint             | Description         | Auth Required |
-| ------ | -------------------- | ------------------- | ------------- |
-| POST   | `/api/auth/register` | Register new user   | ❌            |
-| POST   | `/api/auth/login`    | Login user          | ❌            |
-| POST   | `/api/auth/logout`   | Logout user         | ✅            |
-| POST   | `/api/auth/refresh`  | Refresh JWT token   | ❌            |
-| GET    | `/api/auth/me`       | Get current user    | ✅            |
-| PUT    | `/api/auth/password` | Update password     | ✅            |
-| PUT    | `/api/auth/profile`  | Update user profile | ✅            |
+| Method | Endpoint           | Description       | Auth Required |
+| ------ | ------------------ | ----------------- | ------------- |
+| POST   | /api/auth/register | Register new user | ❌            |
+| POST   | /api/auth/login    | Login user        | ❌            |
+| POST   | /api/auth/logout   | Logout user       | ✅            |
+| POST   | /api/auth/refresh  | Refresh JWT token | ❌            |
 
-### 📝 Posts (7 endpoints)
+### 📝 Posts
 
-| Method | Endpoint                       | Description                 | Auth Required |
-| ------ | ------------------------------ | --------------------------- | ------------- |
-| POST   | `/api/posts`                   | Create new post             | ✅            |
-| GET    | `/api/posts/feed`              | Get personalized feed       | ✅            |
-| GET    | `/api/posts/search`            | Search posts with filters   | ✅            |
-| GET    | `/api/posts/trending`          | Get trending hashtags       | ✅            |
-| POST   | `/api/posts/:postId/like`      | Like/unlike post            | ✅            |
-| POST   | `/api/posts/:postId/retweet`   | Retweet/unretweet post      | ✅            |
-| GET    | `/api/posts/:postId/analytics` | Get detailed post analytics | ✅            |
+| Method | Endpoint                     | Description                     | Auth Required |
+| ------ | ---------------------------- | ------------------------------- | ------------- |
+| POST   | /api/posts                   | Create new post (media/poll)    | ✅            |
+| GET    | /api/posts/live-feeds        | Get latest posts/retweets/polls | ✅            |
+| GET    | /api/posts/feed              | Get personalized user feed      | ✅            |
+| GET    | /api/posts/search            | Search posts with filters       | ✅            |
+| GET    | /api/posts/trending          | Get trending hashtags           | ✅            |
+| POST   | /api/posts/:postId/like      | Like/unlike post                | ✅            |
+| POST   | /api/posts/:postId/retweet   | Retweet/unretweet post          | ✅            |
+| POST   | /api/posts/:postId/comments  | Add a comment to a post         | ✅            |
+| GET    | /api/posts/:postId/polls     | Get poll for a post             | ✅            |
+| GET    | /api/posts/:postId/analytics | Get detailed post analytics     | ✅            |
 
-### 👥 Users & Social (6 endpoints)
+### 👥 Users & Social
 
-| Method | Endpoint                       | Description                | Auth Required |
-| ------ | ------------------------------ | -------------------------- | ------------- |
-| GET    | `/api/users/profile/:username` | Get user public profile    | ✅            |
-| POST   | `/api/users/:userId/follow`    | Follow/unfollow user       | ✅            |
-| GET    | `/api/users/:userId/followers` | Get user's followers list  | ✅            |
-| GET    | `/api/users/:userId/following` | Get user's following list  | ✅            |
-| PUT    | `/api/users/profile`           | Update profile information | ✅            |
-| GET    | `/api/users/me/profile`        | Get own profile details    | ✅            |
+| Method | Endpoint                     | Description                          | Auth Required |
+| ------ | ---------------------------- | ------------------------------------ | ------------- |
+| GET    | /api/users/:userId/profile   | Get user public profile              | ✅            |
+| PUT    | /api/users/profile           | Update authenticated user's profile  | ✅            |
+| GET    | /api/users/me/profile        | Get own profile details              | ✅            |
+| POST   | /api/users/:userId/follow    | Follow user                          | ✅            |
+| DELETE | /api/users/:userId/follow    | Unfollow user                        | ✅            |
+| GET    | /api/users/:userId/followers | Get user's followers list            | ✅            |
+| GET    | /api/users/:userId/following | Get user's following list            | ✅            |
+| GET    | /api/users/suggestions       | Get follow suggestions               | ✅            |
+| GET    | /api/users/search            | Search users by username/displayName | ❌/✅         |
 
-### 🔧 System (1 endpoint)
+### 🗳️ Polls
 
-| Method | Endpoint  | Description  | Auth Required |
-| ------ | --------- | ------------ | ------------- |
-| GET    | `/health` | Health check | ❌            |
+| Method | Endpoint        | Description           | Auth Required |
+| ------ | --------------- | --------------------- | ------------- |
+| POST   | /api/polls/vote | Vote on a poll option | ✅            |
+
+### 🔔 Notifications
+
+| Method | Endpoint           | Description                              | Auth Required |
+| ------ | ------------------ | ---------------------------------------- | ------------- |
+| GET    | /api/notifications | Get notifications for authenticated user | ✅            |
+
+### � General Search
+
+| Method | Endpoint    | Description                  | Auth Required |
+| ------ | ----------- | ---------------------------- | ------------- |
+| GET    | /api/search | General search (users/posts) | ❌/✅         |
+
+### 🔧 System
+
+| Method | Endpoint | Description  | Auth Required |
+| ------ | -------- | ------------ | ------------- |
+| GET    | /health  | Health check | ❌            |
 
 ## Quick Start
 
@@ -132,6 +153,10 @@ JWT_EXPIRES_IN=7d
 RATE_LIMIT_WINDOW_MS=900000
 RATE_LIMIT_MAX_REQUESTS=100
 CORS_ORIGIN=http://localhost:3000
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_S3_BUCKET=your-bucket-name
+AWS_S3_REGION=your-region
 ```
 
 ### 4. Start Server
@@ -216,14 +241,21 @@ POST http://localhost:8080/api/users/USER_ID/follow
 Authorization: Bearer YOUR_JWT_TOKEN
 ```
 
-### 6. Like a Post
+### 6. Unfollow a User
+
+```http
+DELETE http://localhost:8080/api/users/USER_ID/follow
+Authorization: Bearer YOUR_JWT_TOKEN
+```
+
+### 7. Like a Post
 
 ```http
 POST http://localhost:8080/api/posts/POST_ID/like
 Authorization: Bearer YOUR_JWT_TOKEN
 ```
 
-### 7. Retweet with Comment
+### 8. Retweet with Comment
 
 ```http
 POST http://localhost:8080/api/posts/POST_ID/retweet
@@ -235,21 +267,40 @@ Content-Type: application/json
 }
 ```
 
-### 8. Search Posts
+### 9. Comment on a Post
+
+```http
+POST http://localhost:8080/api/posts/POST_ID/comments
+Authorization: Bearer YOUR_JWT_TOKEN
+Content-Type: application/json
+
+{
+  "content": "Nice tweet!"
+}
+```
+
+### 10. Get Poll for a Post
+
+```http
+GET http://localhost:8080/api/posts/POST_ID/polls
+Authorization: Bearer YOUR_JWT_TOKEN
+```
+
+### 11. Search Posts
 
 ```http
 GET http://localhost:8080/api/posts/search?q=javascript&type=text&limit=10
 Authorization: Bearer YOUR_JWT_TOKEN
 ```
 
-### 9. Get User Profile
+### 11. Get User Profile
 
 ```http
 GET http://localhost:8080/api/users/profile/testuser
 Authorization: Bearer YOUR_JWT_TOKEN
 ```
 
-### 10. Update Profile
+### 12. Update Profile
 
 ```http
 PUT http://localhost:8080/api/users/profile
@@ -307,6 +358,12 @@ POSTGRESQL_PASSWORD=password
 # JWT Configuration
 JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 JWT_EXPIRES_IN=7d
+
+# AWS S3 Configuration (required for file uploads)
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_S3_BUCKET=your-bucket-name
+AWS_S3_REGION=your-region
 
 # Security & Rate Limiting
 RATE_LIMIT_WINDOW_MS=900000
@@ -462,29 +519,52 @@ CREATE TABLE user_retweets (
 ## File Structure
 
 ```
-src/
-├── controllers/
-│   ├── authController.js      # Authentication logic
-│   ├── userController.js      # User profile & social features
-│   └── postgresPostController.js # Posts, feed, analytics
-├── models/
-│   ├── User.js               # MongoDB user model
-│   ├── PostgreSQLPost.js     # PostgreSQL post model
-│   └── PostgreSQLModels.js   # User interactions models
-├── middleware/
-│   └── auth.js               # JWT authentication middleware
-├── routes/
-│   ├── auth.js               # Authentication routes
-│   ├── users.js              # User & social routes
-│   └── postsPG.js            # Posts & interactions routes
-├── config/
-│   ├── mongodb.js            # MongoDB connection
-│   └── postgresql.js         # PostgreSQL connection
-├── views/
-│   ├── authViews.js          # User response formatting
-│   └── systemViews.js        # API documentation
-└── app.js                    # Express app configuration
+controllers/
+  auth.controller.js         # Authentication logic
+  posts.controller.js        # Posts, feed, analytics, polls
+  users.controller.js        # User profile & social features
+  poll.controller.js         # Poll voting and management
+  notifications.controller.js# Notifications logic
+  generalsearch.controller.js# General search logic
+factories/                   # Error and response factories
+middlewares/                 # Auth, validation, upload, etc.
+migrations/                  # DB migration scripts
+models/
+  UserModels.js              # MongoDB user model
+  PostgreSQLPost.js          # PostgreSQL post model (with poll support)
+  PostgreSQLModels.js        # User interactions models
+  PollsModels/               # Poll, PollOption, PollVote models
+routes/
+  auth.routes.js             # Authentication routes
+  posts.routes.js            # Posts & poll routes
+  users.routes.js            # User & social routes
+  poll.routes.js             # Poll voting routes
+  notifications.routes.js    # Notification routes
+  generalsearch.routes.js    # Search routes
+schemas/                     # Yup validation schemas
+utils/
+  s3.js                      # AWS S3 file upload/download logic
+  notificationService.js      # Notification helpers
+  socket.js                   # Socket.IO helpers
+uploads/                     # Uploaded files (images, videos)
+views/                       # API and system views
+app.js                       # Express app configuration
+docker-compose.yml           # Docker orchestration
+package.json                 # Project dependencies
+.env                         # Environment variables
+README.md                    # Project documentation
 ```
+
+## Additional Features
+
+- **File Uploads:** Supports image/video uploads via AWS S3. You must set the AWS S3 environment variables in your `.env` file (see above). See `utils/s3.js` for configuration and upload logic. Use `multipart/form-data` for media posts.
+- **Polls:** Create posts with polls by sending a `poll` field (as JSON string) in `multipart/form-data` to `/api/posts`. Vote on polls via `/api/polls/vote`.
+- **Live Feed:** Use `/api/posts/live-feeds` for the latest posts, retweets, and polls (paginated, latest first).
+- **Real-time:** Socket.IO for notifications and live updates.
+
+## Note
+
+Some endpoint names and request/response formats may differ from earlier documentation. Refer to Swagger docs at `/api/docs` or the latest code for up-to-date details.
 
 ## Development Commands
 
@@ -534,9 +614,3 @@ docker-compose ps
 - Enable SSL/TLS for database connections
 - Set appropriate CORS origins
 - Configure rate limiting for production load
-
-## API Documentation
-
-For detailed API documentation with request/response examples, see the `/api/docs` endpoint (if documentation middleware is enabled) or refer to the `src/views/systemViews.js` file which contains comprehensive API documentation for all 21 endpoints.
-
-Perfect for building a complete Twitter-like social media platform with authentication, posts, social features, and real-time interactions!
