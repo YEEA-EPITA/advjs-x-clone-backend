@@ -213,63 +213,102 @@ Post.searchPosts = async (searchTerm, filters = {}) => {
 };
 
 // Offset-based pagination for live feeds
-Post.findLiveFeeds = async (userId, limit = 20, page = 1) => {
+Post.findLiveFeeds = async (userId, limit = 20, cursor = null) => {
   let whereClause = "p.is_public = true AND p.is_deleted = false";
-  page = Math.max(parseInt(page) || 1, 1);
-  limit = Math.min(parseInt(limit) || 20, 100);
-  const offset = (page - 1) * limit;
+  const replacements = { userId };
 
-  const countResult = await sequelize.query(
-    `SELECT COUNT(*) as count FROM posts p WHERE ${whereClause}`,
-    { type: sequelize.QueryTypes.SELECT }
-  );
-  const totalCount = countResult[0]?.count ? parseInt(countResult[0].count) : 0;
+  if (cursor) {
+    const [createdAt, id] = cursor.split("|");
+    whereClause +=
+      " AND (p.created_at < :createdAt OR (p.created_at = :createdAt AND p.id < :id))";
+    replacements.createdAt = createdAt;
+    replacements.id = id;
+  }
 
-  const postQuery = `
-    SELECT p.* FROM posts p
+  const query = `
+    SELECT 
+      p.*,
+      poll.id AS poll_id,
+      poll.question AS poll_question,
+      poll.expires_at AS poll_expires_at,
+      pv.option_id AS selected_option_id,
+      pl.id IS NOT NULL AS liked_by_me
+    FROM posts p
+    LEFT JOIN polls poll ON poll.post_id = p.id
+    LEFT JOIN poll_votes pv ON poll.id = pv.poll_id AND pv.user_id = :userId
+    LEFT JOIN user_likes pl ON pl.post_id = p.id AND pl.user_id = :userId
     WHERE ${whereClause}
     ORDER BY p.created_at DESC, p.id DESC
+    LIMIT :limit
   `;
-  const posts = await sequelize.query(postQuery, {
+  replacements.limit = limit;
+
+  const results = await sequelize.query(query, {
+    replacements,
     type: sequelize.QueryTypes.SELECT,
   });
 
-  let retweets = await UserRetweet.findAll({ raw: true });
-  let postsForFeed = posts;
+  // Step 1: Extract poll_ids for batch-fetching options
+  const pollIds = results.filter((r) => r.poll_id).map((r) => r.poll_id);
 
-  const retweetFeedItems = retweets.map((rt) => {
-    const originalPost = postsForFeed.find((p) => p.id === rt.post_id);
-    return {
-      type: "retweet",
-      retweetId: rt.id,
-      retweeterId: rt.user_id,
-      retweeterUsername: rt.username,
-      retweetComment: rt.comment,
-      retweetedAt: rt.retweeted_at,
-      originalPost,
+  let optionsMap = {};
+  if (pollIds.length > 0) {
+    const options = await PollOption.findAll({
+      where: { poll_id: pollIds },
+      attributes: ["id", "poll_id", "option_text", "vote_count"],
+      raw: true,
+    });
+
+    // Group options by poll_id
+    optionsMap = options.reduce((acc, opt) => {
+      if (!acc[opt.poll_id]) acc[opt.poll_id] = [];
+      acc[opt.poll_id].push({
+        id: opt.id,
+        option_text: opt.option_text,
+        vote_count: opt.vote_count,
+      });
+      return acc;
+    }, {});
+  }
+
+  const feeds = results.map((post) => {
+    const formattedPost = {
+      ...post,
     };
+
+    // attach poll if exists
+    if (post.poll_id) {
+      formattedPost.poll = {
+        id: post.poll_id,
+        question: post.poll_question,
+        expires_at: post.poll_expires_at,
+        options: optionsMap[post.poll_id] || [],
+        voted: !!post.selected_option_id,
+        selected_option_id: post.selected_option_id || null,
+      };
+    }
+
+    // Cleanup
+    delete formattedPost.poll_id;
+    delete formattedPost.poll_question;
+    delete formattedPost.poll_expires_at;
+    delete formattedPost.selected_option_id;
+
+    return formattedPost;
   });
 
-  const postFeedItems = postsForFeed.map((post) => ({
-    type: "post",
-    ...post,
-  }));
-
-  let combinedFeed = [...postFeedItems, ...retweetFeedItems].sort((a, b) => {
-    const aTime =
-      a.type === "retweet" ? new Date(a.retweetedAt) : new Date(a.created_at);
-    const bTime =
-      b.type === "retweet" ? new Date(b.retweetedAt) : new Date(b.created_at);
-    return bTime - aTime;
-  });
-
-  const pagedFeed = combinedFeed.slice(offset, offset + limit);
+  let nextCursor = null;
+  let hasMore = false;
+  if (feeds.length === limit) {
+    const last = feeds[feeds.length - 1];
+    nextCursor = `${last.created_at.toISOString()}|${last.id}`;
+    hasMore = true;
+  }
 
   return {
-    feeds: pagedFeed,
-    page,
-    limit,
-    totalCount: combinedFeed.length,
+    feeds,
+    nextCursor,
+    hasMore,
   };
 };
 

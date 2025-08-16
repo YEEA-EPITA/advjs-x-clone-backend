@@ -56,19 +56,16 @@ const postsController = {
   // Get all public posts as live feeds with cursor-based pagination
   getLiveFeeds: async (req, res) => {
     try {
-      let page = Number(req.query.page);
-      page = Number.isInteger(page) && page > 0 ? page : 1;
-      let limit = Number(req.query.limit);
-      limit = Number.isInteger(limit) && limit > 0 && limit <= 100 ? limit : 20;
+      const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+      const cursor = req.query.cursor || null;
 
       // Fetch live feeds from model
       const userId = req.user?._id?.toString() || null;
-      const {
-        feeds,
-        page: returnedPage,
-        limit: returnedLimit,
-        totalCount,
-      } = await Post.findLiveFeeds(userId, limit, page);
+      const { feeds, nextCursor, hasMore } = await Post.findLiveFeeds(
+        userId,
+        limit,
+        cursor
+      );
 
       return ResponseFactory.success({
         res,
@@ -76,9 +73,9 @@ const postsController = {
         data: {
           feeds,
           pagination: {
-            page: returnedPage,
-            limit: returnedLimit,
-            totalCount,
+            limit,
+            nextCursor,
+            hasMore,
           },
         },
       });
